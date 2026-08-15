@@ -3,17 +3,17 @@
 namespace App\Modules\Identitas\Services;
 
 use App\Modules\Auth\Services\RbacService;
+use App\Modules\Identitas\Repositories\IdentitasRepository;
 use App\Modules\Shared\Auth\CurrentUser;
 use App\Modules\Shared\Support\DateFormat;
 use App\Modules\Shared\Support\DeskripsiLookup;
 use App\Modules\Shared\Support\PublicOrigins;
-use CodeIgniter\Database\BaseConnection;
 use DateTimeImmutable;
 
 final class IdentitasDetailService
 {
     public function __construct(
-        private readonly BaseConnection $db,
+        private readonly IdentitasRepository $identitas,
         private readonly DeskripsiLookup $lookup,
         private readonly IdentitasCaseViewService $caseView,
         private readonly RbacService $rbac,
@@ -25,12 +25,7 @@ final class IdentitasDetailService
      */
     public function show(string $nomorInduk, CurrentUser $user): ?array
     {
-        $row = $this->db->table('identitas')
-            ->select('identitas.*, identitas_ktp.NAMA_LENGKAP AS NAMA_LENGKAP_KTP, identitas_ktp.TEMPAT_LAHIR AS TEMPAT_LAHIR_KTP')
-            ->join('identitas_ktp', 'identitas_ktp.NIK = identitas.NIK', 'left')
-            ->where('identitas.NOMOR_INDUK', $nomorInduk)
-            ->get()
-            ->getRowArray();
+        $row = $this->identitas->findWithKtp($nomorInduk);
 
         if (! $row) {
             return null;
@@ -43,11 +38,11 @@ final class IdentitasDetailService
         return [
             'nomorInduk'  => (string) $row['NOMOR_INDUK'],
             'namaLengkap' => $row['NAMA_LENGKAP'] ?? null,
-            'isTahanan'   => $this->isTahanan($nomorInduk),
+            'isTahanan'   => $this->identitas->isTahanan($nomorInduk),
             'access'      => $this->rbac->accessFor($user, RbacService::MENU_IDENTITAS),
             'case'        => $this->caseView->forNomorInduk($nomorInduk),
             'links'       => [
-                'ubah'           => $legacy . '/ManajemenIdentitas/viewEdit/' . rawurlencode($nomorInduk),
+                'ubah'           => $frontend . '/identitas/' . rawurlencode($nomorInduk) . '/ubah',
                 'hapus'          => $legacy . '/ManajemenIdentitas/viewDelete/' . rawurlencode($nomorInduk),
                 'cetakIdentitas' => $legacy . '/LaporanIdentitas/cetak_identitas_napi/' . rawurlencode($nomorInduk),
                 'cetakTahanan'   => $legacy . '/LaporanIdentitas/cetak_identitas_tahanan/' . rawurlencode($nomorInduk),
@@ -248,11 +243,7 @@ final class IdentitasDetailService
      */
     private function sidikJari(string $nomorInduk, string $legacy): array
     {
-        $row = $this->db->table('sidik_jari')
-            ->where('NOMOR_INDUK', $nomorInduk)
-            ->where('TANGGAL_SJ IS NOT NULL', null, false)
-            ->get()
-            ->getRowArray();
+        $row = $this->identitas->findSidikJari($nomorInduk, true);
 
         $empty = [
             'jempolKanan' => null, 'telunjukKanan' => null, 'tengahKanan' => null, 'manisKanan' => null, 'kelingkingKanan' => null,
@@ -302,14 +293,7 @@ final class IdentitasDetailService
      */
     private function history(string $nomorInduk): array
     {
-        $rows = $this->db->table('identitas_attribute_histori ias')
-            ->select('ias.NAMA_FIELD, ias.ISI_FIELD, ias.ID_PERKARA, ias.ID_REG, ias.CREATED, ias.CREATED_BY, jr.DESKRIPSI AS JENIS_REGISTRASI')
-            ->join('jenis_registrasi jr', 'ias.ID_REG = jr.ID_REG', 'left')
-            ->where('ias.NOMOR_INDUK', $nomorInduk)
-            ->orderBy('ias.UPDATED', 'DESC')
-            ->orderBy('ias.CREATED', 'DESC')
-            ->get()
-            ->getResultArray();
+        $rows = $this->identitas->attributeHistory($nomorInduk);
 
         $items = [];
         foreach ($rows as $row) {
@@ -332,13 +316,7 @@ final class IdentitasDetailService
      */
     private function similar(string $nomorInduk, string $frontend): array
     {
-        $rows = $this->db->table('identitas_mirip im')
-            ->select('im.NOMOR_INDUK_2 AS nomorInduk, identitas.NAMA_LENGKAP AS namaLengkap')
-            ->join('identitas', 'identitas.NOMOR_INDUK = im.NOMOR_INDUK_2', 'left')
-            ->where('im.NOMOR_INDUK_1', $nomorInduk)
-            ->where('im.IS_DELETE', '0')
-            ->get()
-            ->getResultArray();
+        $rows = $this->identitas->similarRows($nomorInduk);
 
         foreach ($rows as &$row) {
             $id = (string) ($row['nomorInduk'] ?? '');
@@ -347,19 +325,6 @@ final class IdentitasDetailService
         unset($row);
 
         return $rows;
-    }
-
-    private function isTahanan(string $nomorInduk): bool
-    {
-        $row = $this->db->table('perkara')
-            ->select('jr.IS_TAHANAN')
-            ->join('jenis_registrasi jr', 'jr.ID_REG = perkara.ID_REG', 'left')
-            ->where('perkara.NOMOR_INDUK', $nomorInduk)
-            ->where('perkara.IS_DELETE', 0)
-            ->get()
-            ->getRowArray();
-
-        return (int) ($row['IS_TAHANAN'] ?? 0) === 1;
     }
 
     private function dati2OrLain(?string $id, ?string $lain): string

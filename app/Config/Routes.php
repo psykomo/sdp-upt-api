@@ -28,6 +28,8 @@ $routes->group('api/v1', static function (RouteCollection $routes) {
         $routes->group('', ['filter' => 'menu:10'], static function (RouteCollection $routes) {
             $routes->get('identitas', '\App\Modules\Identitas\Controllers\IdentitasSearchController::index');
             $routes->get('identitas/export', '\App\Modules\Identitas\Controllers\IdentitasSearchController::export');
+            $routes->get('identitas/(:segment)/form', '\App\Modules\Identitas\Controllers\IdentitasDetailController::form/$1');
+            $routes->put('identitas/(:segment)', '\App\Modules\Identitas\Controllers\IdentitasDetailController::update/$1');
             $routes->get('identitas/(:segment)', '\App\Modules\Identitas\Controllers\IdentitasDetailController::show/$1');
         });
     });

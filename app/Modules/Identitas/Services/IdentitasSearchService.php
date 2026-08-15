@@ -47,7 +47,7 @@ final class IdentitasSearchService
                 'fotoDepanUrl'    => $this->photoUrl($legacy, $row['FOTO_DEPAN'] ?? null),
                 'links'           => [
                     'lihat'        => $frontend . '/identitas/' . rawurlencode($noin),
-                    'ubah'         => $legacy . '/ManajemenIdentitas/viewEdit/' . rawurlencode($noin),
+                    'ubah'         => $frontend . '/identitas/' . rawurlencode($noin) . '/ubah',
                     'hapus'        => $legacy . '/ManajemenIdentitas/viewDelete/' . rawurlencode($noin),
                     'cetakIdentitas' => $legacy . '/LaporanIdentitas/cetak_identitas_napi/' . rawurlencode($noin),
                     'cetakTahanan'   => $legacy . '/LaporanIdentitas/cetak_identitas_tahanan/' . rawurlencode($noin),
