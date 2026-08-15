@@ -1,14 +1,14 @@
 <?php
 
-namespace App\Modules\Identity\Repositories;
+namespace App\Modules\Identitas\Repositories;
 
-use App\Modules\Identity\DTO\IdentitySearchQuery;
+use App\Modules\Identitas\DTO\IdentitasSearchQuery;
 use App\Modules\Shared\Auth\CurrentUser;
 use App\Modules\Shared\Support\DateFormat;
 use CodeIgniter\Database\BaseBuilder;
 use CodeIgniter\Database\BaseConnection;
 
-final class IdentitySearchRepository
+final class IdentitasSearchRepository
 {
     private const FINGERPRINT_COLS = [
         'JEMPOL_KIRI', 'JEMPOL_KANAN',
@@ -25,7 +25,7 @@ final class IdentitySearchRepository
     /**
      * @return array{rows: list<array<string, mixed>>, total: int}
      */
-    public function search(IdentitySearchQuery $query, CurrentUser $user): array
+    public function search(IdentitasSearchQuery $query, CurrentUser $user): array
     {
         $builder = $this->baseBuilder($query, $user);
         $builder->groupBy('identitas.NOMOR_INDUK');
@@ -33,7 +33,7 @@ final class IdentitySearchRepository
         $countSql = $builder->getCompiledSelect(false);
         $total    = (int) $this->db->query('SELECT COUNT(*) AS c FROM (' . $countSql . ') _cnt')->getRow()->c;
 
-        $sortCol = IdentitySearchQuery::SORTABLE[$query->sort];
+        $sortCol = IdentitasSearchQuery::SORTABLE[$query->sort];
         $builder->orderBy($sortCol, $query->order);
 
         if (! $query->exportAll) {
@@ -48,7 +48,7 @@ final class IdentitySearchRepository
         ];
     }
 
-    private function baseBuilder(IdentitySearchQuery $query, CurrentUser $user): BaseBuilder
+    private function baseBuilder(IdentitasSearchQuery $query, CurrentUser $user): BaseBuilder
     {
         $builder = $this->db->table('identitas');
         $builder->select(
@@ -132,7 +132,7 @@ final class IdentitySearchRepository
         return $builder;
     }
 
-    private function applyKeyword(BaseBuilder $builder, IdentitySearchQuery $query): void
+    private function applyKeyword(BaseBuilder $builder, IdentitasSearchQuery $query): void
     {
         $q = $query->q;
         if ($q === '') {

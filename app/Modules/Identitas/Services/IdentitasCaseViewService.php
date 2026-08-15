@@ -1,12 +1,12 @@
 <?php
 
-namespace App\Modules\Identity\Services;
+namespace App\Modules\Identitas\Services;
 
 use App\Modules\Shared\Support\DateFormat;
 use CodeIgniter\Database\BaseConnection;
 use DateTimeImmutable;
 
-final class IdentityCaseViewService
+final class IdentitasCaseViewService
 {
     public function __construct(private readonly BaseConnection $db)
     {

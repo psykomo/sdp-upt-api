@@ -1,32 +1,32 @@
 <?php
 
-namespace App\Modules\Identity\Controllers;
+namespace App\Modules\Identitas\Controllers;
 
 use App\Controllers\BaseController;
 use App\Modules\Auth\Services\RbacService;
-use App\Modules\Identity\DTO\IdentitySearchQuery;
-use App\Modules\Identity\Repositories\IdentitySearchRepository;
-use App\Modules\Identity\Services\IdentityCaseViewService;
-use App\Modules\Identity\Services\IdentitySearchService;
+use App\Modules\Identitas\DTO\IdentitasSearchQuery;
+use App\Modules\Identitas\Repositories\IdentitasSearchRepository;
+use App\Modules\Identitas\Services\IdentitasCaseViewService;
+use App\Modules\Identitas\Services\IdentitasSearchService;
 use App\Modules\Shared\Auth\AuthContext;
 use App\Modules\Shared\Http\ApiResponse;
 
-final class IdentitySearchController extends BaseController
+final class IdentitasSearchController extends BaseController
 {
-    private function service(): IdentitySearchService
+    private function service(): IdentitasSearchService
     {
         $db = db_connect();
 
-        return new IdentitySearchService(
-            new IdentitySearchRepository($db),
-            new IdentityCaseViewService($db),
+        return new IdentitasSearchService(
+            new IdentitasSearchRepository($db),
+            new IdentitasCaseViewService($db),
             new RbacService($db),
         );
     }
 
     public function index()
     {
-        $query  = IdentitySearchQuery::fromRequest($this->request->getGet() ?? []);
+        $query  = IdentitasSearchQuery::fromRequest($this->request->getGet() ?? []);
         $result = $this->service()->search($query, AuthContext::user());
 
         return ApiResponse::ok($result);
@@ -36,7 +36,7 @@ final class IdentitySearchController extends BaseController
     {
         $input = $this->request->getGet() ?? [];
         $input['exportAll'] = $this->request->getGet('exportAll') ?? '0';
-        $query = IdentitySearchQuery::fromRequest($input);
+        $query = IdentitasSearchQuery::fromRequest($input);
         $user  = AuthContext::user();
         $result = $this->service()->search($query, $user);
 

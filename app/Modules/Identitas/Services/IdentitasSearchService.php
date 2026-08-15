@@ -1,19 +1,19 @@
 <?php
 
-namespace App\Modules\Identity\Services;
+namespace App\Modules\Identitas\Services;
 
 use App\Modules\Auth\Services\RbacService;
-use App\Modules\Identity\DTO\IdentitySearchQuery;
-use App\Modules\Identity\Repositories\IdentitySearchRepository;
+use App\Modules\Identitas\DTO\IdentitasSearchQuery;
+use App\Modules\Identitas\Repositories\IdentitasSearchRepository;
 use App\Modules\Shared\Auth\CurrentUser;
 use App\Modules\Shared\Support\DateFormat;
 use App\Modules\Shared\Support\PublicOrigins;
 
-final class IdentitySearchService
+final class IdentitasSearchService
 {
     public function __construct(
-        private readonly IdentitySearchRepository $repository,
-        private readonly IdentityCaseViewService $caseView,
+        private readonly IdentitasSearchRepository $repository,
+        private readonly IdentitasCaseViewService $caseView,
         private readonly RbacService $rbac,
     ) {
     }
@@ -21,7 +21,7 @@ final class IdentitySearchService
     /**
      * @return array<string, mixed>
      */
-    public function search(IdentitySearchQuery $query, CurrentUser $user): array
+    public function search(IdentitasSearchQuery $query, CurrentUser $user): array
     {
         $access   = $this->rbac->accessFor($user, RbacService::MENU_IDENTITAS);
         $found    = $this->repository->search($query, $user);

@@ -26,9 +26,9 @@ $routes->group('api/v1', static function (RouteCollection $routes) {
         $routes->get('lookups/(:segment)', '\App\Modules\Lookup\Controllers\LookupController::group/$1');
 
         $routes->group('', ['filter' => 'menu:10'], static function (RouteCollection $routes) {
-            $routes->get('identities', '\App\Modules\Identity\Controllers\IdentitySearchController::index');
-            $routes->get('identities/export', '\App\Modules\Identity\Controllers\IdentitySearchController::export');
-            $routes->get('identities/(:segment)', '\App\Modules\Identity\Controllers\IdentityDetailController::show/$1');
+            $routes->get('identitas', '\App\Modules\Identitas\Controllers\IdentitasSearchController::index');
+            $routes->get('identitas/export', '\App\Modules\Identitas\Controllers\IdentitasSearchController::export');
+            $routes->get('identitas/(:segment)', '\App\Modules\Identitas\Controllers\IdentitasDetailController::show/$1');
         });
     });
 });

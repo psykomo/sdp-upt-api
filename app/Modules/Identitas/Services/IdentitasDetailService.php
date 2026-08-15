@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Modules\Identity\Services;
+namespace App\Modules\Identitas\Services;
 
 use App\Modules\Auth\Services\RbacService;
 use App\Modules\Shared\Auth\CurrentUser;
@@ -10,12 +10,12 @@ use App\Modules\Shared\Support\PublicOrigins;
 use CodeIgniter\Database\BaseConnection;
 use DateTimeImmutable;
 
-final class IdentityDetailService
+final class IdentitasDetailService
 {
     public function __construct(
         private readonly BaseConnection $db,
         private readonly DeskripsiLookup $lookup,
-        private readonly IdentityCaseViewService $caseView,
+        private readonly IdentitasCaseViewService $caseView,
         private readonly RbacService $rbac,
     ) {
     }

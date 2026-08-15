@@ -1,8 +1,8 @@
 <?php
 
-namespace App\Modules\Identity\DTO;
+namespace App\Modules\Identitas\DTO;
 
-final class IdentitySearchQuery
+final class IdentitasSearchQuery
 {
     public const FIELDS = [
         'nama',
