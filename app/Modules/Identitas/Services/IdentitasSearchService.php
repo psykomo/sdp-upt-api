@@ -48,7 +48,7 @@ final class IdentitasSearchService
                 'links'           => [
                     'lihat'        => $frontend . '/identitas/' . rawurlencode($noin),
                     'ubah'         => $frontend . '/identitas/' . rawurlencode($noin) . '/ubah',
-                    'hapus'        => $legacy . '/ManajemenIdentitas/viewDelete/' . rawurlencode($noin),
+                    'hapus'        => $frontend . '/identitas/' . rawurlencode($noin) . '/hapus',
                     'cetakIdentitas' => $legacy . '/LaporanIdentitas/cetak_identitas_napi/' . rawurlencode($noin),
                     'cetakTahanan'   => $legacy . '/LaporanIdentitas/cetak_identitas_tahanan/' . rawurlencode($noin),
                     'cetakSidikJari' => $legacy . '/DaftarSidikJari/cetak_sidikjari/' . rawurlencode($noin),

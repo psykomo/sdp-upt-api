@@ -3,11 +3,16 @@
 namespace App\Modules\Identitas\Controllers;
 
 use App\Controllers\BaseController;
+use App\Modules\Auth\Services\AuthService;
+use App\Modules\Auth\Services\JwtService;
 use App\Modules\Auth\Services\RbacService;
+use App\Modules\Auth\Services\SiteContextService;
 use App\Modules\Identitas\Repositories\IdentitasRepository;
 use App\Modules\Identitas\Services\IdentitasCaseViewService;
 use App\Modules\Identitas\Services\IdentitasDetailService;
 use App\Modules\Identitas\Services\IdentitasFormService;
+use App\Modules\Identitas\Services\IdentitasDeleteException;
+use App\Modules\Identitas\Services\IdentitasDeleteService;
 use App\Modules\Identitas\Services\IdentitasUpdateException;
 use App\Modules\Identitas\Services\IdentitasUpdateService;
 use App\Modules\Shared\Auth\AuthContext;
@@ -54,6 +59,38 @@ final class IdentitasDetailController extends BaseController
         try {
             $result = $service->update($nomorInduk, $input, AuthContext::user());
         } catch (IdentitasUpdateException $e) {
+            return ApiResponse::fail($e->getMessage(), $e->status, $e->errors);
+        }
+
+        return ApiResponse::ok($result);
+    }
+
+    public function destroy(string $nomorInduk)
+    {
+        $db   = db_connect();
+        $auth = new AuthService(
+            $db,
+            new JwtService(),
+            new SiteContextService($db),
+            new RbacService($db),
+        );
+        $service = new IdentitasDeleteService(
+            new IdentitasRepository($db),
+            new RbacService($db),
+            new UnitOfWork($db),
+            $auth,
+        );
+
+        $input = $this->request->getJSON(true);
+        if (! is_array($input)) {
+            $input = $this->request->getPost() ?? [];
+        }
+        $grant = (string) ($this->request->getHeaderLine('X-SDP-Supervisor-Grant')
+            ?: ($input['grant'] ?? ''));
+
+        try {
+            $result = $service->delete($nomorInduk, AuthContext::user(), $grant);
+        } catch (IdentitasDeleteException $e) {
             return ApiResponse::fail($e->getMessage(), $e->status, $e->errors);
         }
 

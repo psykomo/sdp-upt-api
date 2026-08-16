@@ -47,7 +47,7 @@ final class IdentitasFormService
             'links'       => [
                 'lihat'          => $frontend . '/identitas/' . rawurlencode($nomorInduk),
                 'kembali'        => $frontend . '/identitas',
-                'hapus'          => $legacy . '/ManajemenIdentitas/viewDelete/' . rawurlencode($nomorInduk),
+                'hapus'          => $frontend . '/identitas/' . rawurlencode($nomorInduk) . '/hapus',
                 'cetakIdentitas' => $legacy . '/LaporanIdentitas/cetak_identitas_napi/' . rawurlencode($nomorInduk),
                 'cetakTahanan'   => $legacy . '/LaporanIdentitas/cetak_identitas_tahanan/' . rawurlencode($nomorInduk),
                 'cetakSidikJari' => $legacy . '/DaftarSidikJari/cetak_sidikjari/' . rawurlencode($nomorInduk),

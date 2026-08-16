@@ -177,4 +177,31 @@ final class IdentitasRepository
 
         return (int) ($row['IS_TAHANAN'] ?? 0) === 1;
     }
+
+    public function hasOpenPerkara(string $nomorInduk): bool
+    {
+        $row = $this->db->table('perkara')
+            ->select('ID_PERKARA')
+            ->where('NOMOR_INDUK', $nomorInduk)
+            ->where('IS_DELETE', 0)
+            ->get()
+            ->getRowArray();
+
+        return $row !== null;
+    }
+
+    public function softDelete(string $nomorInduk): void
+    {
+        $this->db->table('identitas')
+            ->where('NOMOR_INDUK', $nomorInduk)
+            ->update(['IS_DELETED' => 1]);
+
+        $this->db->table('sidik_jari')
+            ->where('NOMOR_INDUK', $nomorInduk)
+            ->update(['IS_DELETED' => 1]);
+
+        $this->db->table('usertbl')
+            ->where('dbid', $nomorInduk)
+            ->update(['IS_DELETED' => 1]);
+    }
 }

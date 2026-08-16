@@ -66,4 +66,22 @@ final class RbacService
 
         return in_array($user->level, ['1', '2', '3', '80'], true);
     }
+
+    /**
+     * PHP getHakAkses looks up hak_akses.Id_Role with the value it is given.
+     * Dual-password passes the supervisor's ID_USER, not ID_ROLE.
+     */
+    public function levelForActor(string $actorId, string $menuId): string
+    {
+        $row = $this->db->table('hak_akses')
+            ->select('Deskripsi')
+            ->where('Id_Menu', $menuId)
+            ->where('Id_Role', $actorId)
+            ->get()
+            ->getRowArray();
+
+        $level = strtoupper((string) ($row['Deskripsi'] ?? 'N'));
+
+        return $level === '' ? 'N' : $level;
+    }
 }

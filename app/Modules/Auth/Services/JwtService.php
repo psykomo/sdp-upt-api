@@ -10,13 +10,18 @@ final class JwtService
 {
     public function encode(array $claims): string
     {
-        $now = time();
         $ttlHours = (int) env('jwt.ttlHours', 8);
 
+        return $this->encodeWithTtl($claims, $ttlHours * 3600);
+    }
+
+    public function encodeWithTtl(array $claims, int $ttlSeconds): string
+    {
+        $now = time();
         $payload = array_merge($claims, [
             'iat' => $now,
             'nbf' => $now,
-            'exp' => $now + ($ttlHours * 3600),
+            'exp' => $now + max(1, $ttlSeconds),
             'iss' => 'sdp-api',
         ]);
 
