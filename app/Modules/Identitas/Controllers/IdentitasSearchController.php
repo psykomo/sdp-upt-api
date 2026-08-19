@@ -15,12 +15,10 @@ final class IdentitasSearchController extends BaseController
 {
     private function service(): IdentitasSearchService
     {
-        $db = db_connect();
-
         return new IdentitasSearchService(
-            new IdentitasSearchRepository($db),
-            new IdentitasCaseViewService($db),
-            new RbacService($db),
+            new IdentitasSearchRepository(),
+            new IdentitasCaseViewService(),
+            new RbacService(),
         );
     }
 

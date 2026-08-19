@@ -28,10 +28,9 @@ final class JwtAuthFilter implements FilterInterface
             $jwt    = new JwtService();
             $claims = $jwt->decode($token);
             $auth   = new AuthService(
-                db_connect(),
                 $jwt,
-                new \App\Modules\Auth\Services\SiteContextService(db_connect()),
-                new \App\Modules\Auth\Services\RbacService(db_connect()),
+                new \App\Modules\Auth\Services\SiteContextService(),
+                new \App\Modules\Auth\Services\RbacService(),
             );
             $user = $auth->userFromClaims($claims);
             if ($user->id === '') {
@@ -39,9 +38,7 @@ final class JwtAuthFilter implements FilterInterface
             }
 
             AuthContext::set($user);
-
-            $tenantId = $request->getHeaderLine('X-Tenant-Id') ?: $user->uptId;
-            (new TenantContext())->apply($tenantId ?: null);
+            (new TenantContext())->apply($user->uptId);
         } catch (\Throwable $e) {
             return ApiResponse::fail($e->getMessage() ?: 'Token tidak valid.', 401);
         }

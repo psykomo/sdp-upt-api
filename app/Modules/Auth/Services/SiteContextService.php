@@ -3,14 +3,9 @@
 namespace App\Modules\Auth\Services;
 
 use App\Modules\Shared\Auth\CurrentUser;
-use CodeIgniter\Database\BaseConnection;
 
 final class SiteContextService
 {
-    public function __construct(private readonly BaseConnection $db)
-    {
-    }
-
     /**
      * Mirrors Sessionnative UPT bootstrap: daftar_referensi ID_LOOKUP=001 holds the current UPT id.
      *
@@ -18,7 +13,7 @@ final class SiteContextService
      */
     public function resolve(): array
     {
-        $row = $this->db->table('daftar_referensi')
+        $row = db_connect()->table('daftar_referensi')
             ->select('DESKRIPSI')
             ->where('ID_LOOKUP', '001')
             ->get()
@@ -35,7 +30,7 @@ final class SiteContextService
             ];
         }
 
-        $kanwil = $this->db->table('kanwil')
+        $kanwil = db_connect()->table('kanwil')
             ->select('KODE, URAIAN')
             ->where('KODE', $id)
             ->get()
@@ -50,7 +45,7 @@ final class SiteContextService
             ];
         }
 
-        $upt = $this->db->table('upt')
+        $upt = db_connect()->table('upt')
             ->select('ID_UPT, URAIAN')
             ->where('ID_UPT', $id)
             ->get()

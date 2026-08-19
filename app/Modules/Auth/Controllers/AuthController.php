@@ -15,13 +15,10 @@ final class AuthController extends BaseController
 {
     private function service(): AuthService
     {
-        $db = db_connect();
-
         return new AuthService(
-            $db,
             new JwtService(),
-            new SiteContextService($db),
-            new RbacService($db),
+            new SiteContextService(),
+            new RbacService(),
         );
     }
 
@@ -30,9 +27,11 @@ final class AuthController extends BaseController
         $json = $this->request->getJSON(true) ?? [];
         $username = (string) ($json['username'] ?? $this->request->getPost('username') ?? '');
         $password = (string) ($json['password'] ?? $this->request->getPost('password') ?? '');
+        $tenantId = (string) ($json['tenantId'] ?? $json['uptId'] ?? $this->request->getPost('tenantId')
+            ?? $this->request->getHeaderLine('X-Tenant-Id') ?? '');
 
         try {
-            $result = $this->service()->login($username, $password);
+            $result = $this->service()->login($username, $password, $tenantId !== '' ? $tenantId : null);
         } catch (\RuntimeException $e) {
             $code = $e->getCode();
             $status = in_array($code, [401, 422, 429], true) ? $code : 400;

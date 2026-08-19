@@ -3,12 +3,11 @@
 namespace App\Modules\Auth\Services;
 
 use App\Modules\Shared\Auth\CurrentUser;
-use CodeIgniter\Database\BaseConnection;
+use App\Modules\Shared\Tenancy\TenantContext;
 
 final class AuthService
 {
     public function __construct(
-        private readonly BaseConnection $db,
         private readonly JwtService $jwt,
         private readonly SiteContextService $site,
         private readonly RbacService $rbac,
@@ -18,12 +17,14 @@ final class AuthService
     /**
      * @return array{token: string, user: array<string, mixed>}
      */
-    public function login(string $username, string $password): array
+    public function login(string $username, string $password, ?string $tenantId = null): array
     {
         $username = trim($username);
         if ($username === '' || $password === '') {
             throw new \RuntimeException('Masukkan username & password.', 422);
         }
+
+        (new TenantContext())->apply($tenantId);
 
         $failed = $this->recentFailedCount($username);
         if ($failed >= 5) {
@@ -33,7 +34,7 @@ final class AuthService
             );
         }
 
-        $row = $this->db->table('pengguna')
+        $row = db_connect()->table('pengguna')
             ->select('pengguna.ID_ROLE, pengguna.ID_USER, pengguna.KANWIL, pengguna.LEVEL, level.NAMA AS NAMA_LEVEL, pengguna.NAMA, pengguna.NIP')
             ->join('level', 'pengguna.LEVEL = level.ID')
             ->where('pengguna.ID_USER', $username)
@@ -55,7 +56,7 @@ final class AuthService
         $token = $this->jwt->encode($this->claimsFrom($user, $row));
         $this->logLogin($user->id, 'Login');
 
-        $this->db->table('pengguna')
+        db_connect()->table('pengguna')
             ->where('ID_USER', $user->id)
             ->update(['LAST_LOGIN' => date('Y-m-d')]);
 
@@ -120,7 +121,7 @@ final class AuthService
             throw new \RuntimeException('Maaf anda tidak memiliki akses.', 403);
         }
 
-        $row = $this->db->table('pengguna')
+        $row = db_connect()->table('pengguna')
             ->select('pengguna.ID_ROLE, pengguna.ID_USER, pengguna.KANWIL, pengguna.LEVEL, level.NAMA AS NAMA_LEVEL, pengguna.NAMA, pengguna.NIP, pengguna.IP_USER')
             ->join('level', 'pengguna.LEVEL = level.ID')
             ->where('pengguna.ID_USER', $username)
@@ -230,7 +231,7 @@ final class AuthService
 
     private function recentFailedCount(string $username): int
     {
-        $row = $this->db->query(
+        $row = db_connect()->query(
             "SELECT COUNT(*) AS c
              FROM log_login
              WHERE USERID = ?
@@ -245,7 +246,7 @@ final class AuthService
 
     private function logLogin(string $userId, string $jenis): void
     {
-        $this->db->table('log_login')->insert([
+        db_connect()->table('log_login')->insert([
             'USERID'        => $userId,
             'IP_ADDRESS'    => service('request')->getIPAddress(),
             'USER_AGENT'    => substr((string) service('request')->getUserAgent(), 0, 120),

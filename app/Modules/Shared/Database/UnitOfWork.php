@@ -2,70 +2,47 @@
 
 namespace App\Modules\Shared\Database;
 
-use CodeIgniter\Database\BaseConnection;
 use Throwable;
 
 /**
- * Transaction boundary that supports nested (savepoint) scopes.
+ * Transaction boundary on the default shared connection (`db_connect()`).
  *
- * A module can run its own atomic unit even when it is already inside
- * a parent/orchestrator transaction. CI4 issues SAVEPOINT when transDepth > 0.
+ * Safe to call from a module that is already inside a parent transactional()
+ * call: CI4 only begins, commits, or rolls back the outermost scope.
  */
 final class UnitOfWork
 {
-    public function __construct(private readonly BaseConnection $db)
+    private function __construct()
     {
-    }
-
-    public static function fromDefault(): self
-    {
-        return new self(db_connect());
     }
 
     /**
      * @template T
-     * @param callable(self): T $work
+     * @param callable(): T $work
      * @return T
      */
-    public function transactional(callable $work): mixed
+    public static function transactional(callable $work): mixed
     {
-        $this->db->transBegin();
+        $db = db_connect();
+        $db->transBegin();
 
         try {
-            $result = $work($this);
+            $result = $work();
 
-            if ($this->db->transStatus() === false) {
-                $this->db->transRollback();
+            if ($db->transStatus() === false) {
+                $db->transRollback();
                 throw new \RuntimeException('Database transaction failed.');
             }
 
-            $this->db->transCommit();
+            $db->transCommit();
 
             return $result;
         } catch (Throwable $e) {
-            if ($this->db->transStatus() !== false || $this->db->transDepth > 0) {
-                $this->db->transRollback();
+            if ($db->transDepth > 0) {
+                $db->transRollback();
             }
 
             throw $e;
         }
-    }
-
-    /**
-     * Nested scope. Safe to call from a module that may already be inside
-     * a parent transactional() call.
-     *
-     * @template T
-     * @param callable(self): T $work
-     * @return T
-     */
-    public function nested(callable $work): mixed
-    {
-        return $this->transactional($work);
-    }
-
-    public function connection(): BaseConnection
-    {
-        return $this->db;
     }
 }

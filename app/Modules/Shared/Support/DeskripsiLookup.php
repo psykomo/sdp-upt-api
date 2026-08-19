@@ -2,14 +2,8 @@
 
 namespace App\Modules\Shared\Support;
 
-use CodeIgniter\Database\BaseConnection;
-
 final class DeskripsiLookup
 {
-    public function __construct(private readonly BaseConnection $db)
-    {
-    }
-
     public function referensi(?string $id): string
     {
         return $this->label('daftar_referensi', 'ID_LOOKUP', $id);
@@ -46,7 +40,7 @@ final class DeskripsiLookup
             return '';
         }
 
-        $row = $this->db->table($table)
+        $row = db_connect()->table($table)
             ->select($textColumn)
             ->where($idColumn, $id)
             ->get()
@@ -100,7 +94,7 @@ final class DeskripsiLookup
      */
     public function dati2Items(?string $propinsiId = null): array
     {
-        $builder = $this->db->table('dati2')
+        $builder = db_connect()->table('dati2')
             ->select('ID_DATI2 AS id, DESKRIPSI AS label, ID_PROPINSI AS propinsiId')
             ->orderBy('DESKRIPSI', 'ASC');
         if ($propinsiId !== null && trim($propinsiId) !== '') {
@@ -124,7 +118,7 @@ final class DeskripsiLookup
      */
     private function items(string $table, string $idColumn, string $textColumn, array $where = []): array
     {
-        $builder = $this->db->table($table)
+        $builder = db_connect()->table($table)
             ->select("{$idColumn} AS id, {$textColumn} AS label")
             ->orderBy($textColumn, 'ASC');
         foreach ($where as $column => $value) {

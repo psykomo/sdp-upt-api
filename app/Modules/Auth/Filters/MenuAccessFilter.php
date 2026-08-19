@@ -23,7 +23,7 @@ final class MenuAccessFilter implements FilterInterface
             return ApiResponse::fail('Tidak terautentikasi.', 401);
         }
 
-        $rbac   = new RbacService(db_connect());
+        $rbac   = new RbacService();
         $access = $rbac->accessFor($user, (string) $menuId);
         if ($access['level'] === 'N') {
             return ApiResponse::fail('Mohon maaf anda tidak berhak mengakses halaman ini.', 403);

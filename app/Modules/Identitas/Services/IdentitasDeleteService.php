@@ -50,7 +50,6 @@ final class IdentitasDeleteService
     public function __construct(
         private readonly IdentitasRepository $identitas,
         private readonly RbacService $rbac,
-        private readonly UnitOfWork $uow,
         private readonly AuthService $auth,
     ) {
     }
@@ -91,7 +90,7 @@ final class IdentitasDeleteService
         $sidik = $this->identitas->findSidikJari($nomorInduk);
         $logUser = $approved['supervisorId'];
 
-        $this->uow->transactional(function () use ($nomorInduk, $logUser): void {
+        UnitOfWork::transactional(function () use ($nomorInduk, $logUser): void {
             $this->identitas->insertChangeLog([
                 'NOMOR_INDUK' => $nomorInduk,
                 'ID_PERKARA'  => '',

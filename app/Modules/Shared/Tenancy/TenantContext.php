@@ -2,21 +2,21 @@
 
 namespace App\Modules\Shared\Tenancy;
 
-use CodeIgniter\Database\BaseConnection;
-
 /**
  * Resolves which database a request should use.
  *
- * Modes (from Project Statements):
+ * Modes: docs/TENANCY.md
  * - single: one tenant, one database, one server (current UPT install)
- * - database_per_tenant: each tenant has its own database on a shared server
- * - shared_database: multiple tenants share one database (filter by tenant key)
+ * - database_per_tenant: each UPT has its own schema on one MariaDB (upt_1, upt_2)
+ * - shared_database: multiple tenants share one database (filter by UPT key)
  */
 final class TenantContext
 {
     public const MODE_SINGLE = 'single';
     public const MODE_DATABASE_PER_TENANT = 'database_per_tenant';
     public const MODE_SHARED_DATABASE = 'shared_database';
+
+    private const DEFAULT_PREFIX = 'upt_';
 
     private ?string $tenantId = null;
 
@@ -36,20 +36,48 @@ final class TenantContext
         return $this->tenantId;
     }
 
+    public function prefix(): string
+    {
+        $prefix = (string) env('tenancy.databasePrefix', self::DEFAULT_PREFIX);
+
+        return $prefix === '' ? self::DEFAULT_PREFIX : $prefix;
+    }
+
+    public function databaseName(): ?string
+    {
+        if ($this->mode() !== self::MODE_DATABASE_PER_TENANT || $this->tenantId === null) {
+            return null;
+        }
+
+        return $this->prefix() . $this->tenantId;
+    }
+
+    /**
+     * @throws \RuntimeException when database_per_tenant cannot resolve a safe schema
+     */
     public function apply(?string $tenantId): void
     {
-        $this->tenantId = $tenantId === null || $tenantId === '' ? null : $tenantId;
+        $this->tenantId = self::normalize($tenantId);
 
-        if ($this->mode() !== self::MODE_DATABASE_PER_TENANT || $this->tenantId === null) {
+        if ($this->mode() !== self::MODE_DATABASE_PER_TENANT) {
             return;
         }
 
-        $prefix = (string) env('tenancy.databasePrefix', 'db_sdp_');
-        $database = $prefix . $this->tenantId;
+        if ($this->tenantId === null) {
+            throw new \RuntimeException('Tenant tidak dikenali.', 422);
+        }
 
-        /** @var BaseConnection $db */
-        $db = db_connect();
-        $db->setDatabase($database);
+        db_connect()->setDatabase($this->databaseName());
+    }
+
+    public static function normalize(?string $raw): ?string
+    {
+        $id = trim((string) $raw);
+        if ($id === '' || preg_match('/^[A-Za-z0-9_]+$/', $id) !== 1) {
+            return null;
+        }
+
+        return $id;
     }
 
     /**

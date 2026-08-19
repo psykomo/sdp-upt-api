@@ -16,7 +16,6 @@ use App\Modules\Identitas\Services\IdentitasDeleteService;
 use App\Modules\Identitas\Services\IdentitasUpdateException;
 use App\Modules\Identitas\Services\IdentitasUpdateService;
 use App\Modules\Shared\Auth\AuthContext;
-use App\Modules\Shared\Database\UnitOfWork;
 use App\Modules\Shared\Http\ApiResponse;
 use App\Modules\Shared\Support\DeskripsiLookup;
 
@@ -44,11 +43,9 @@ final class IdentitasDetailController extends BaseController
 
     public function update(string $nomorInduk)
     {
-        $db      = db_connect();
         $service = new IdentitasUpdateService(
-            new IdentitasRepository($db),
-            new RbacService($db),
-            new UnitOfWork($db),
+            new IdentitasRepository(),
+            new RbacService(),
         );
 
         $input = $this->request->getJSON(true);
@@ -67,17 +64,14 @@ final class IdentitasDetailController extends BaseController
 
     public function destroy(string $nomorInduk)
     {
-        $db   = db_connect();
         $auth = new AuthService(
-            $db,
             new JwtService(),
-            new SiteContextService($db),
-            new RbacService($db),
+            new SiteContextService(),
+            new RbacService(),
         );
         $service = new IdentitasDeleteService(
-            new IdentitasRepository($db),
-            new RbacService($db),
-            new UnitOfWork($db),
+            new IdentitasRepository(),
+            new RbacService(),
             $auth,
         );
 
@@ -99,25 +93,21 @@ final class IdentitasDetailController extends BaseController
 
     private function detailService(): IdentitasDetailService
     {
-        $db = db_connect();
-
         return new IdentitasDetailService(
-            new IdentitasRepository($db),
-            new DeskripsiLookup($db),
-            new IdentitasCaseViewService($db),
-            new RbacService($db),
+            new IdentitasRepository(),
+            new DeskripsiLookup(),
+            new IdentitasCaseViewService(),
+            new RbacService(),
         );
     }
 
     private function formService(): IdentitasFormService
     {
-        $db = db_connect();
-
         return new IdentitasFormService(
-            new IdentitasRepository($db),
-            new DeskripsiLookup($db),
-            new IdentitasCaseViewService($db),
-            new RbacService($db),
+            new IdentitasRepository(),
+            new DeskripsiLookup(),
+            new IdentitasCaseViewService(),
+            new RbacService(),
         );
     }
 }

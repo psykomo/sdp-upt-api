@@ -3,15 +3,10 @@
 namespace App\Modules\Auth\Services;
 
 use App\Modules\Shared\Auth\CurrentUser;
-use CodeIgniter\Database\BaseConnection;
 
 final class RbacService
 {
     public const MENU_IDENTITAS = '10';
-
-    public function __construct(private readonly BaseConnection $db)
-    {
-    }
 
     /**
      * Legacy hak_akses.Deskripsi: W write, R read, N none.
@@ -20,7 +15,7 @@ final class RbacService
      */
     public function accessFor(CurrentUser $user, string $menuId, int $tipe = 1): array
     {
-        $row = $this->db->table('hak_akses')
+        $row = db_connect()->table('hak_akses')
             ->select('Deskripsi, HAK_DELETE')
             ->where('Id_Menu', $menuId)
             ->where('Id_Role', $user->role)
@@ -39,7 +34,7 @@ final class RbacService
 
         $canDelete = false;
         if ($level === 'W') {
-            $deleteRow = $this->db->table('hak_akses')
+            $deleteRow = db_connect()->table('hak_akses')
                 ->select('HAK_DELETE')
                 ->where('ID_MENU', $menuId)
                 ->where('ID_ROLE', $user->id)
@@ -73,7 +68,7 @@ final class RbacService
      */
     public function levelForActor(string $actorId, string $menuId): string
     {
-        $row = $this->db->table('hak_akses')
+        $row = db_connect()->table('hak_akses')
             ->select('Deskripsi')
             ->where('Id_Menu', $menuId)
             ->where('Id_Role', $actorId)

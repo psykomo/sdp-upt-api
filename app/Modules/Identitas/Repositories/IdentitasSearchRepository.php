@@ -6,7 +6,6 @@ use App\Modules\Identitas\DTO\IdentitasSearchQuery;
 use App\Modules\Shared\Auth\CurrentUser;
 use App\Modules\Shared\Support\DateFormat;
 use CodeIgniter\Database\BaseBuilder;
-use CodeIgniter\Database\BaseConnection;
 
 final class IdentitasSearchRepository
 {
@@ -18,10 +17,6 @@ final class IdentitasSearchRepository
         'KELINGKING_KIRI', 'KELINGKING_KANAN',
     ];
 
-    public function __construct(private readonly BaseConnection $db)
-    {
-    }
-
     /**
      * @return array{rows: list<array<string, mixed>>, total: int}
      */
@@ -31,7 +26,7 @@ final class IdentitasSearchRepository
         $builder->groupBy('identitas.NOMOR_INDUK');
 
         $countSql = $builder->getCompiledSelect(false);
-        $total    = (int) $this->db->query('SELECT COUNT(*) AS c FROM (' . $countSql . ') _cnt')->getRow()->c;
+        $total    = (int) db_connect()->query('SELECT COUNT(*) AS c FROM (' . $countSql . ') _cnt')->getRow()->c;
 
         $sortCol = IdentitasSearchQuery::SORTABLE[$query->sort];
         $builder->orderBy($sortCol, $query->order);
@@ -50,7 +45,7 @@ final class IdentitasSearchRepository
 
     private function baseBuilder(IdentitasSearchQuery $query, CurrentUser $user): BaseBuilder
     {
-        $builder = $this->db->table('identitas');
+        $builder = db_connect()->table('identitas');
         $builder->select(
             'identitas.NOMOR_INDUK AS noin,
              identitas.NOMOR_INDUK,
@@ -172,7 +167,7 @@ final class IdentitasSearchRepository
                 break;
 
             case 'usia':
-                $builder->where('getUmur(identitas.TANGGAL_LAHIR) = ' . $this->db->escape($q), null, false);
+                $builder->where('getUmur(identitas.TANGGAL_LAHIR) = ' . db_connect()->escape($q), null, false);
                 break;
 
             case 'alamat':

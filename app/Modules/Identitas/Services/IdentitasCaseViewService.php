@@ -3,15 +3,10 @@
 namespace App\Modules\Identitas\Services;
 
 use App\Modules\Shared\Support\DateFormat;
-use CodeIgniter\Database\BaseConnection;
 use DateTimeImmutable;
 
 final class IdentitasCaseViewService
 {
-    public function __construct(private readonly BaseConnection $db)
-    {
-    }
-
     /**
      * Port of identitas_perkara_model::getPerkaraModeView.
      *
@@ -33,7 +28,7 @@ final class IdentitasCaseViewService
             'statusSubPenghuni'       => '',
         ];
 
-        $perkara = $this->db->table('perkara')
+        $perkara = db_connect()->table('perkara')
             ->select('perkara.ID_PERKARA, perkara.LOKASI_SEL, perkara.NMR_REG_GOL, jr.DESKRIPSI AS jenis, perkara.ID_REG, perkara.ID_STATUS, perkara.ID_SUB_STATUS, perkara.TGL_PERTAMA_DITAHAN, perkara.TGL_EKSPIRASI, perkara.TGL_MSK_LAPAS, jr.IS_TAHANAN, sel.NO_SEL')
             ->join('jenis_registrasi jr', 'jr.ID_REG = perkara.ID_REG', 'left')
             ->join('sel', 'perkara.LOKASI_SEL = sel.ID_SEL', 'left')
@@ -66,7 +61,7 @@ final class IdentitasCaseViewService
 
     private function kejahatanUtama(string $idPerkara, string $nmrRegGol): string
     {
-        $row = $this->db->table('kejahatan k')
+        $row = db_connect()->table('kejahatan k')
             ->select('t.TERMINOLOGI')
             ->join('terminologi t', 'k.ID_TERMINOLOGI = t.ID_TERMINOLOGI')
             ->where('k.ID_PERKARA', $idPerkara)
@@ -125,7 +120,7 @@ final class IdentitasCaseViewService
             return '';
         }
 
-        $row = $this->db->table('daftar_referensi')
+        $row = db_connect()->table('daftar_referensi')
             ->select('DESKRIPSI')
             ->where('ID_LOOKUP', $idLookup)
             ->get()

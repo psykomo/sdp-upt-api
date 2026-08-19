@@ -39,7 +39,6 @@ final class IdentitasUpdateService
     public function __construct(
         private readonly IdentitasRepository $identitas,
         private readonly RbacService $rbac,
-        private readonly UnitOfWork $uow,
     ) {
     }
 
@@ -73,7 +72,7 @@ final class IdentitasUpdateService
         $row    = $this->mapIdentitas($nomorInduk, $input, $photos, $user);
         $sidik  = $this->mapSidikJari($input);
 
-        $this->uow->transactional(function () use ($nomorInduk, $existing, $row, $sidik, $input, $user): void {
+        UnitOfWork::transactional(function () use ($nomorInduk, $existing, $row, $sidik, $input, $user): void {
             $this->writeChangeLog($nomorInduk, $existing, $row, $user);
             $this->identitas->update($nomorInduk, $row);
             $this->identitas->upsertSidikJari($nomorInduk, $sidik);
