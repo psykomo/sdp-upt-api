@@ -19,14 +19,14 @@ final class JwtAuthFilter implements FilterInterface
             return null;
         }
 
-        $header = $request->getHeaderLine('Authorization');
-        if (! preg_match('/Bearer\s+(.+)/i', $header, $m)) {
+        $token = $this->tokenFrom($request);
+        if ($token === null) {
             return ApiResponse::fail('Tidak terautentikasi.', 401);
         }
 
         try {
             $jwt    = new JwtService();
-            $claims = $jwt->decode(trim($m[1]));
+            $claims = $jwt->decode($token);
             $auth   = new AuthService(
                 db_connect(),
                 $jwt,
@@ -52,5 +52,33 @@ final class JwtAuthFilter implements FilterInterface
     public function after(RequestInterface $request, ResponseInterface $response, $arguments = null)
     {
         return $response;
+    }
+
+    private function tokenFrom(RequestInterface $request): ?string
+    {
+        $header = $request->getHeaderLine('Authorization');
+        if (preg_match('/Bearer\s+(.+)/i', $header, $m)) {
+            $bearer = trim($m[1]);
+            if ($bearer !== '') {
+                return $bearer;
+            }
+        }
+
+        if ($request instanceof \CodeIgniter\HTTP\IncomingRequest) {
+            $cookie = $request->getCookie('sdp_token');
+            if (is_string($cookie) && $cookie !== '') {
+                return $cookie;
+            }
+        }
+
+        $raw = $request->getHeaderLine('Cookie');
+        if ($raw !== '' && preg_match('/(?:^|;\s*)sdp_token=([^;]+)/', $raw, $m)) {
+            $cookie = rawurldecode($m[1]);
+            if ($cookie !== '') {
+                return $cookie;
+            }
+        }
+
+        return null;
     }
 }

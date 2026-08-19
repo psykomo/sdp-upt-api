@@ -9,6 +9,7 @@ use App\Modules\Auth\Services\RbacService;
 use App\Modules\Auth\Services\SiteContextService;
 use App\Modules\Shared\Auth\AuthContext;
 use App\Modules\Shared\Http\ApiResponse;
+use CodeIgniter\HTTP\ResponseInterface;
 
 final class AuthController extends BaseController
 {
@@ -39,7 +40,33 @@ final class AuthController extends BaseController
             return ApiResponse::fail($e->getMessage(), $status);
         }
 
-        return ApiResponse::ok($result);
+        return $this->withTokenCookie(ApiResponse::ok($result), $result['token']);
+    }
+
+    public function cookie()
+    {
+        $json  = $this->request->getJSON(true) ?? [];
+        $token = trim((string) ($json['token'] ?? $this->request->getPost('token') ?? ''));
+        if ($token === '') {
+            return ApiResponse::fail('Token tidak valid.', 401);
+        }
+
+        try {
+            $claims = (new JwtService())->decode($token);
+            $user   = $this->service()->userFromClaims($claims);
+            if ($user->id === '') {
+                return ApiResponse::fail('Token tidak valid.', 401);
+            }
+        } catch (\Throwable $e) {
+            return ApiResponse::fail('Token tidak valid.', 401);
+        }
+
+        return $this->withTokenCookie(ApiResponse::ok(['ok' => true]), $token);
+    }
+
+    public function logout()
+    {
+        return $this->expireTokenCookie(ApiResponse::ok(['ok' => true]));
     }
 
     public function me()
@@ -69,5 +96,27 @@ final class AuthController extends BaseController
         }
 
         return ApiResponse::ok($result);
+    }
+
+    private function withTokenCookie(ResponseInterface $response, string $token): ResponseInterface
+    {
+        $ttl = max(1, (int) env('jwt.ttlHours', 8) * 3600);
+
+        return $response->setCookie([
+            'name'     => 'sdp_token',
+            'value'    => $token,
+            'expire'   => $ttl,
+            'path'     => '/',
+            'prefix'   => '',
+            'domain'   => '',
+            'secure'   => $this->request->isSecure(),
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
+    }
+
+    private function expireTokenCookie(ResponseInterface $response): ResponseInterface
+    {
+        return $response->deleteCookie('sdp_token', '', '/');
     }
 }

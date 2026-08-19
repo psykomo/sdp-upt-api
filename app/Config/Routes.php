@@ -20,6 +20,8 @@ $routes->group('api/v1', static function (RouteCollection $routes) {
     $routes->options('(:any)', static fn () => service('response')->setStatusCode(204));
 
     $routes->post('auth/login', '\App\Modules\Auth\Controllers\AuthController::login');
+    $routes->post('auth/cookie', '\App\Modules\Auth\Controllers\AuthController::cookie');
+    $routes->post('auth/logout', '\App\Modules\Auth\Controllers\AuthController::logout');
 
     $routes->group('', ['filter' => 'jwt'], static function (RouteCollection $routes) {
         $routes->get('auth/me', '\App\Modules\Auth\Controllers\AuthController::me');

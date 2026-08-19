@@ -11,6 +11,7 @@ final class PublicOrigins
             return 'https://' . self::publicApiHost();
         }
 
+        // API is never advertised on the LAN. Officers use same-origin /api.
         return rtrim((string) env('app.baseURL', 'http://127.0.0.1:8081'), '/');
     }
 
@@ -21,7 +22,10 @@ final class PublicOrigins
             return 'https://' . self::publicLegacyHost();
         }
 
-        return rtrim((string) env('legacy.baseURL', 'http://127.0.0.1:8080'), '/');
+        return self::rewriteOfficerHost(
+            rtrim((string) env('legacy.baseURL', 'http://127.0.0.1:8080'), '/'),
+            $host,
+        );
     }
 
     public static function frontendBase(): string
@@ -31,7 +35,10 @@ final class PublicOrigins
             return 'https://' . self::publicFrontendHost();
         }
 
-        return rtrim((string) env('frontend.origin', 'http://127.0.0.1:8082'), '/');
+        return self::rewriteOfficerHost(
+            rtrim((string) env('frontend.origin', 'http://127.0.0.1:8082'), '/'),
+            $host,
+        );
     }
 
     private static function requestHost(): string
@@ -52,6 +59,28 @@ final class PublicOrigins
         }
 
         return '127.0.0.1';
+    }
+
+    private static function isLoopback(string $host): bool
+    {
+        return $host === '127.0.0.1' || $host === 'localhost' || $host === '::1';
+    }
+
+    /**
+     * When the officer opened a LAN host, leftover 8080/8082 links must use that
+     * host — not 127.0.0.1 (that would be the officer PC).
+     */
+    private static function rewriteOfficerHost(string $default, string $host): string
+    {
+        if ($host === '' || self::isLoopback($host)) {
+            return $default;
+        }
+
+        $parts  = parse_url($default);
+        $scheme = $parts['scheme'] ?? 'http';
+        $port   = isset($parts['port']) ? ':' . $parts['port'] : '';
+
+        return $scheme . '://' . $host . $port;
     }
 
     private static function isPublicHost(string $host): bool
