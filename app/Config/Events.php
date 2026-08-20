@@ -2,9 +2,11 @@
 
 namespace Config;
 
+use App\Modules\Shared\Support\DebugbarHistory;
 use CodeIgniter\Events\Events;
 use CodeIgniter\Exceptions\FrameworkException;
 use CodeIgniter\HotReloader\HotReloader;
+use Config\Toolbar;
 
 /*
  * --------------------------------------------------------------------
@@ -47,6 +49,9 @@ Events::on('pre_system', static function (): void {
     if (CI_DEBUG && ! is_cli()) {
         Events::on('DBQuery', 'CodeIgniter\Debug\Toolbar\Collectors\Database::collect');
         service('toolbar')->respond();
+        Events::on('post_system', static function (): void {
+            DebugbarHistory::prune(WRITEPATH . 'debugbar', config(Toolbar::class)->maxHistory);
+        });
         // Hot Reload route - for framework use on the hot reloader.
         if (ENVIRONMENT === 'development') {
             service('routes')->get('__hot-reload', static function (): void {
