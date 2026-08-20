@@ -20,12 +20,19 @@ final class IdentitasFormService
     }
 
     /**
-     * Writable field IDs plus lookups for ManajemenIdentitas/viewEdit.
-     *
      * @return array<string, mixed>|null
      */
     public function form(string $nomorInduk, CurrentUser $user): ?array
     {
+        $access = $this->rbac->accessFor($user, RbacService::MENU_IDENTITAS);
+        if (! $access['canWrite']) {
+            throw new IdentitasUpdateException(
+                'Mohon maaf anda tidak berhak mengubah data identitas.',
+                [],
+                403,
+            );
+        }
+
         $row = $this->identitas->find($nomorInduk);
 
         if (! $row) {
@@ -34,7 +41,6 @@ final class IdentitasFormService
 
         $legacy   = PublicOrigins::legacyBase();
         $frontend = PublicOrigins::frontendBase();
-        $access   = $this->rbac->accessFor($user, RbacService::MENU_IDENTITAS);
         $wni      = $this->wargaNegara($row) === 'WNI';
 
         return [

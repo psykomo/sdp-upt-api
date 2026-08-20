@@ -4,6 +4,7 @@ namespace App\Modules\Identitas\Services;
 
 use App\Modules\Auth\Services\RbacService;
 use App\Modules\Identitas\Repositories\IdentitasRepository;
+use App\Modules\Identitas\Support\StoredUploadPath;
 use App\Modules\Shared\Auth\CurrentUser;
 use App\Modules\Shared\Database\UnitOfWork;
 use App\Modules\Shared\Support\DateFormat;
@@ -68,16 +69,24 @@ final class IdentitasUpdateService
             throw new IdentitasUpdateException('Data identitas belum lengkap.', $errors);
         }
 
-        $photos = $this->resolvePhotos($nomorInduk, $input, $existing);
-        $row    = $this->mapIdentitas($nomorInduk, $input, $photos, $user);
-        $sidik  = $this->mapSidikJari($input);
+        $pending = [];
+        try {
+            $photos = $this->resolvePhotos($nomorInduk, $input, $existing, $pending);
+            $row    = $this->mapIdentitas($nomorInduk, $input, $photos, $user);
+            $sidik  = $this->mapSidikJari($input);
 
-        UnitOfWork::transactional(function () use ($nomorInduk, $existing, $row, $sidik, $input, $user): void {
-            $this->writeChangeLog($nomorInduk, $existing, $row, $user);
-            $this->identitas->update($nomorInduk, $row);
-            $this->identitas->upsertSidikJari($nomorInduk, $sidik);
-            $this->saveKemiripan($nomorInduk, (string) ($input['nomorIndukSimilar'] ?? ''));
-        });
+            UnitOfWork::transactional(function () use ($nomorInduk, $existing, $row, $sidik, $input, $user): void {
+                $this->writeChangeLog($nomorInduk, $existing, $row, $user);
+                $this->identitas->update($nomorInduk, $row);
+                $this->identitas->upsertSidikJari($nomorInduk, $sidik);
+                $this->saveKemiripan($nomorInduk, (string) ($input['nomorIndukSimilar'] ?? ''), $user);
+            });
+        } catch (\Throwable $e) {
+            $this->discardPendingPhotos($pending);
+            throw $e;
+        }
+
+        $this->commitPendingPhotos($pending);
 
         return ['nomorInduk' => $nomorInduk];
     }
@@ -131,7 +140,7 @@ final class IdentitasUpdateService
         $hasCiriPhoto = false;
         foreach (['fotoCiri1', 'fotoCiri2', 'fotoCiri3'] as $slot) {
             $meta = self::PHOTO_SLOTS[$slot];
-            if ($this->hasUpload($input[$slot] ?? null) || $this->existingFile($input[$meta['pathKey']] ?? ($existing[$meta['column']] ?? null))) {
+            if ($this->hasUpload($input[$slot] ?? null) || $this->existingFile($existing[$meta['column']] ?? null)) {
                 $hasCiriPhoto = true;
             }
         }
@@ -145,19 +154,20 @@ final class IdentitasUpdateService
     /**
      * @param array<string, mixed> $input
      * @param array<string, mixed> $existing
+     * @param list<array{tmp: string, live: string}> $pending
      * @return array<string, string>
      */
-    private function resolvePhotos(string $nomorInduk, array $input, array $existing): array
+    private function resolvePhotos(string $nomorInduk, array $input, array $existing, array &$pending): array
     {
         $out = [];
         foreach (self::PHOTO_SLOTS as $slot => $meta) {
             $upload = $input[$slot] ?? null;
             if ($this->hasUpload($upload)) {
-                $out[$meta['column']] = $this->storePhoto($nomorInduk, $meta['file'], $upload);
+                $out[$meta['column']] = $this->storePhoto($nomorInduk, $meta['file'], $upload, $pending);
                 continue;
             }
 
-            $kept = $this->str($input[$meta['pathKey']] ?? ($existing[$meta['column']] ?? ''));
+            $kept = $this->str($existing[$meta['column']] ?? '');
             if ($this->existingFile($kept)) {
                 $out[$meta['column']] = $kept;
                 continue;
@@ -298,10 +308,10 @@ final class IdentitasUpdateService
         ];
     }
 
-    private function saveKemiripan(string $nomorInduk, string $similarCsv): void
+    private function saveKemiripan(string $nomorInduk, string $similarCsv, CurrentUser $user): void
     {
         $ids = array_values(array_filter(array_map('trim', explode(',', $similarCsv)), static fn ($id) => $id !== ''));
-        $this->identitas->replaceKemiripan($nomorInduk, $ids);
+        $this->identitas->replaceKemiripan($nomorInduk, $ids, $user->uptId);
     }
 
     /**
@@ -329,13 +339,16 @@ final class IdentitasUpdateService
 
             $this->identitas->insertChangeLog([
                 'NOMOR_INDUK' => $nomorInduk,
+                'ID_PERKARA'  => '',
                 'ID_USER'     => $user->id,
                 'FIELD'       => $field,
                 'ISI_LAMA'    => $lama,
                 'ISI_BARU'    => $baruStr,
                 'TGL_UPDATE'  => $now,
+                'NOREGGOL'    => '',
                 'TABEL'       => 'identitas',
                 'AKSI'        => 'UPDATE',
+                'IP'          => service('request')->getIPAddress(),
                 'KONSOLIDASI' => '0',
             ]);
         }
@@ -343,8 +356,9 @@ final class IdentitasUpdateService
 
     /**
      * @param array<string, mixed> $upload
+     * @param list<array{tmp: string, live: string}> $pending
      */
-    private function storePhoto(string $nomorInduk, string $slot, array $upload): string
+    private function storePhoto(string $nomorInduk, string $slot, array $upload, array &$pending): string
     {
         $raw = base64_decode((string) ($upload['base64'] ?? ''), true);
         if ($raw === false || $raw === '') {
@@ -354,15 +368,12 @@ final class IdentitasUpdateService
             throw new IdentitasUpdateException('File foto yang anda upload lebih besar dari 2MB.', [$slot => 'Maksimal 2MB.']);
         }
 
-        $info = @getimagesizefromstring($raw);
+        $info = $this->imageSize($raw);
         if ($info === false) {
             throw new IdentitasUpdateException('File foto yang anda upload rusak, harap gunakan file foto yang lain.', [$slot => 'Bukan file gambar.']);
         }
 
-        $root = rtrim((string) env('legacy.root', ''), '/');
-        if ($root === '') {
-            $root = dirname(__DIR__, 5) . '/102sdp/sdp';
-        }
+        $root = StoredUploadPath::legacyRoot();
 
         $relative = 'upload/' . date('Y') . '/' . date('m') . '/';
         $dir      = $root . '/' . $relative;
@@ -370,12 +381,59 @@ final class IdentitasUpdateService
             throw new IdentitasUpdateException('Gagal menyimpan foto identitas.', [$slot => 'Folder upload tidak dapat dibuat.']);
         }
 
-        $relativePath = $relative . $nomorInduk . '-' . $slot . '.jpg';
-        if (file_put_contents($dir . $nomorInduk . '-' . $slot . '.jpg', $raw) === false) {
+        $fileName     = $nomorInduk . '-' . $slot . '.jpg';
+        $relativePath = $relative . $fileName;
+        $live         = $dir . $fileName;
+        $tmp          = $live . '.tmp';
+        if (file_put_contents($tmp, $raw) === false) {
             throw new IdentitasUpdateException('Gagal menyimpan foto identitas.', [$slot => 'Gagal menulis file.']);
         }
 
+        $pending[] = ['tmp' => $tmp, 'live' => $live];
+
         return $relativePath;
+    }
+
+    /**
+     * @param list<array{tmp: string, live: string}> $pending
+     */
+    private function commitPendingPhotos(array $pending): void
+    {
+        foreach ($pending as $file) {
+            if (! is_file($file['tmp'])) {
+                continue;
+            }
+            if (! rename($file['tmp'], $file['live'])) {
+                throw new IdentitasUpdateException('Gagal menyimpan foto identitas.', ['foto' => 'Gagal menulis file.']);
+            }
+        }
+    }
+
+    /**
+     * @param list<array{tmp: string, live: string}> $pending
+     */
+    private function discardPendingPhotos(array $pending): void
+    {
+        foreach ($pending as $file) {
+            if (is_file($file['tmp'])) {
+                unlink($file['tmp']);
+            }
+        }
+    }
+
+    /**
+     * @return array<int, mixed>|false
+     */
+    private function imageSize(string $raw): array|false
+    {
+        set_error_handler(static fn () => true);
+        try {
+            $info = getimagesizefromstring($raw);
+        } finally {
+            restore_error_handler();
+        }
+
+        return $info === false ? false : $info;
     }
 
     private function hasUpload(mixed $upload): bool

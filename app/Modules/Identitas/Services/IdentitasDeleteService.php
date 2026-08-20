@@ -5,6 +5,7 @@ namespace App\Modules\Identitas\Services;
 use App\Modules\Auth\Services\AuthService;
 use App\Modules\Auth\Services\RbacService;
 use App\Modules\Identitas\Repositories\IdentitasRepository;
+use App\Modules\Identitas\Support\StoredUploadPath;
 use App\Modules\Shared\Auth\CurrentUser;
 use App\Modules\Shared\Database\UnitOfWork;
 
@@ -120,10 +121,7 @@ final class IdentitasDeleteService
      */
     private function deletePhotos(array $identitas, ?array $sidik): void
     {
-        $root = rtrim((string) env('legacy.root', ''), '/');
-        if ($root === '') {
-            $root = dirname(__DIR__, 5) . '/102sdp/sdp';
-        }
+        $root = StoredUploadPath::legacyRoot();
 
         foreach (self::PHOTO_COLUMNS as $column) {
             $this->unlinkStored($root, $identitas[$column] ?? null);
@@ -140,14 +138,11 @@ final class IdentitasDeleteService
 
     private function unlinkStored(string $root, mixed $path): void
     {
-        $rel = trim((string) $path);
-        if ($rel === '' || str_contains($rel, '..')) {
+        $full = StoredUploadPath::absolute($root, $path);
+        if ($full === null || ! is_file($full)) {
             return;
         }
 
-        $full = str_starts_with($rel, '/') ? $rel : $root . '/' . ltrim($rel, '/');
-        if (is_file($full)) {
-            @unlink($full);
-        }
+        unlink($full);
     }
 }

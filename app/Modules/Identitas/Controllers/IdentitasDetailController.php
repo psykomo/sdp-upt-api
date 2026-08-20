@@ -26,7 +26,11 @@ final class IdentitasDetailController extends BaseController
 
     public function form(string $nomorInduk)
     {
-        $form = (new IdentitasFormService())->form($nomorInduk, AuthContext::user());
+        try {
+            $form = (new IdentitasFormService())->form($nomorInduk, AuthContext::user());
+        } catch (IdentitasUpdateException $e) {
+            return ApiResponse::fail($e->getMessage(), $e->status, $e->errors);
+        }
         if ($form === null) {
             return ApiResponse::fail('Identitas tidak ditemukan.', 404);
         }

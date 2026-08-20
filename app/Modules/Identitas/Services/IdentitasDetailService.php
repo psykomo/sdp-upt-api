@@ -78,7 +78,7 @@ final class IdentitasDetailService
         }
 
         $tempatLahir = $wni
-            ? $this->dati2OrLain($row['ID_TEMPAT_LAHIR'] ?? null, $row['ID_TEMPAT_LAHIR_LAIN'] ?? null)
+            ? $this->lookup->dati2($row['ID_TEMPAT_LAHIR'] ?? null)
             : (string) ($row['ID_TEMPAT_LAHIR_LAIN'] ?? '');
         if ($tempatLahir === '9999' || strcasecmp($tempatLahir, 'Lain-lain') === 0) {
             $tempatLahir = (string) ($row['ID_TEMPAT_LAHIR_LAIN'] ?? '');
