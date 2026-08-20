@@ -25,13 +25,8 @@ final class JwtAuthFilter implements FilterInterface
         }
 
         try {
-            $jwt    = new JwtService();
-            $claims = $jwt->decode($token);
-            $auth   = new AuthService(
-                $jwt,
-                new \App\Modules\Auth\Services\SiteContextService(),
-                new \App\Modules\Auth\Services\RbacService(),
-            );
+            $claims = (new JwtService())->decode($token);
+            $auth   = new AuthService();
             $user = $auth->userFromClaims($claims);
             if ($user->id === '') {
                 return ApiResponse::fail('Token tidak valid.', 401);

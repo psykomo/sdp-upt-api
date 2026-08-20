@@ -13,10 +13,10 @@ use DateTimeImmutable;
 final class IdentitasDetailService
 {
     public function __construct(
-        private readonly IdentitasRepository $identitas,
-        private readonly DeskripsiLookup $lookup,
-        private readonly IdentitasCaseViewService $caseView,
-        private readonly RbacService $rbac,
+        private readonly IdentitasRepository $identitas = new IdentitasRepository(),
+        private readonly DeskripsiLookup $lookup = new DeskripsiLookup(),
+        private readonly IdentitasCaseViewService $caseView = new IdentitasCaseViewService(),
+        private readonly RbacService $rbac = new RbacService(),
     ) {
     }
 

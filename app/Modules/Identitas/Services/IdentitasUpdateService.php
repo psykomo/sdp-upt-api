@@ -37,8 +37,8 @@ final class IdentitasUpdateService
     ];
 
     public function __construct(
-        private readonly IdentitasRepository $identitas,
-        private readonly RbacService $rbac,
+        private readonly IdentitasRepository $identitas = new IdentitasRepository(),
+        private readonly RbacService $rbac = new RbacService(),
     ) {
     }
 

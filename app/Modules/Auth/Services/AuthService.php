@@ -8,9 +8,9 @@ use App\Modules\Shared\Tenancy\TenantContext;
 final class AuthService
 {
     public function __construct(
-        private readonly JwtService $jwt,
-        private readonly SiteContextService $site,
-        private readonly RbacService $rbac,
+        private readonly JwtService $jwt = new JwtService(),
+        private readonly SiteContextService $site = new SiteContextService(),
+        private readonly RbacService $rbac = new RbacService(),
     ) {
     }
 

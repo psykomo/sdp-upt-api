@@ -12,9 +12,9 @@ use App\Modules\Shared\Support\PublicOrigins;
 final class IdentitasSearchService
 {
     public function __construct(
-        private readonly IdentitasSearchRepository $repository,
-        private readonly IdentitasCaseViewService $caseView,
-        private readonly RbacService $rbac,
+        private readonly IdentitasSearchRepository $repository = new IdentitasSearchRepository(),
+        private readonly IdentitasCaseViewService $caseView = new IdentitasCaseViewService(),
+        private readonly RbacService $rbac = new RbacService(),
     ) {
     }
 

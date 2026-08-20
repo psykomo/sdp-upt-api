@@ -5,8 +5,6 @@ namespace App\Modules\Auth\Controllers;
 use App\Controllers\BaseController;
 use App\Modules\Auth\Services\AuthService;
 use App\Modules\Auth\Services\JwtService;
-use App\Modules\Auth\Services\RbacService;
-use App\Modules\Auth\Services\SiteContextService;
 use App\Modules\Shared\Auth\AuthContext;
 use App\Modules\Shared\Http\ApiResponse;
 use CodeIgniter\HTTP\ResponseInterface;
@@ -15,11 +13,7 @@ final class AuthController extends BaseController
 {
     private function service(): AuthService
     {
-        return new AuthService(
-            new JwtService(),
-            new SiteContextService(),
-            new RbacService(),
-        );
+        return new AuthService();
     }
 
     public function login()

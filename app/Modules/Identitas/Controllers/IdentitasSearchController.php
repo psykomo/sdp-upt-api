@@ -3,10 +3,7 @@
 namespace App\Modules\Identitas\Controllers;
 
 use App\Controllers\BaseController;
-use App\Modules\Auth\Services\RbacService;
 use App\Modules\Identitas\DTO\IdentitasSearchQuery;
-use App\Modules\Identitas\Repositories\IdentitasSearchRepository;
-use App\Modules\Identitas\Services\IdentitasCaseViewService;
 use App\Modules\Identitas\Services\IdentitasSearchService;
 use App\Modules\Shared\Auth\AuthContext;
 use App\Modules\Shared\Http\ApiResponse;
@@ -15,11 +12,7 @@ final class IdentitasSearchController extends BaseController
 {
     private function service(): IdentitasSearchService
     {
-        return new IdentitasSearchService(
-            new IdentitasSearchRepository(),
-            new IdentitasCaseViewService(),
-            new RbacService(),
-        );
+        return new IdentitasSearchService();
     }
 
     public function index()
