@@ -6,9 +6,9 @@ namespace App\Modules\Shared\Tenancy;
  * Resolves which database a request should use.
  *
  * Modes: docs/TENANCY.md
- * - single: one tenant, one database, one server (current UPT install)
+ * - single: one UPT box, one local database (e.g. db_sdp)
  * - database_per_tenant: each UPT has its own schema on one MariaDB (upt_1, upt_2)
- * - shared_database: multiple tenants share one database (filter by UPT key)
+ * - shared_database: one database for everyone — UPT, Kanwil, and Pusat (e.g. sdp_pusat); scope rows in SQL/session
  */
 final class TenantContext
 {
