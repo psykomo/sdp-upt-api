@@ -40,6 +40,7 @@ final class IdentitasUpdateService
     public function __construct(
         private readonly IdentitasRepository $identitas = new IdentitasRepository(),
         private readonly RbacService $rbac = new RbacService(),
+        private readonly IdentitasAccessService $access = new IdentitasAccessService(),
     ) {
     }
 
@@ -57,6 +58,8 @@ final class IdentitasUpdateService
                 403,
             );
         }
+
+        $this->access->assertNomorIndukAccessible($nomorInduk, $user);
 
         $existing = $this->identitas->find($nomorInduk);
 

@@ -17,6 +17,7 @@ final class IdentitasDetailService
         private readonly DeskripsiLookup $lookup = new DeskripsiLookup(),
         private readonly IdentitasCaseViewService $caseView = new IdentitasCaseViewService(),
         private readonly RbacService $rbac = new RbacService(),
+        private readonly IdentitasAccessService $access = new IdentitasAccessService(),
     ) {
     }
 
@@ -25,6 +26,8 @@ final class IdentitasDetailService
      */
     public function show(string $nomorInduk, CurrentUser $user): ?array
     {
+        $this->access->assertNomorIndukAccessible($nomorInduk, $user);
+
         $row = $this->identitas->findWithKtp($nomorInduk);
 
         if (! $row) {

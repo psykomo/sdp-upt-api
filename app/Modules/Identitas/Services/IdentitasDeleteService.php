@@ -52,6 +52,7 @@ final class IdentitasDeleteService
         private readonly IdentitasRepository $identitas = new IdentitasRepository(),
         private readonly RbacService $rbac = new RbacService(),
         private readonly AuthService $auth = new AuthService(),
+        private readonly IdentitasAccessService $access = new IdentitasAccessService(),
     ) {
     }
 
@@ -68,6 +69,8 @@ final class IdentitasDeleteService
                 403,
             );
         }
+
+        $this->access->assertNomorIndukAccessible($nomorInduk, $user);
 
         try {
             $approved = $this->auth->readHapusGrant($user, $nomorInduk, $grant);

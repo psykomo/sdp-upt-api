@@ -20,6 +20,7 @@ $routes->group('api/v1', static function (RouteCollection $routes) {
     $routes->options('(:any)', static fn () => service('response')->setStatusCode(204));
 
     $routes->post('auth/login', '\App\Modules\Auth\Controllers\AuthController::login');
+    $routes->get('auth/login-options', '\App\Modules\Auth\Controllers\AuthController::loginOptions');
     $routes->post('auth/cookie', '\App\Modules\Auth\Controllers\AuthController::cookie');
     $routes->post('auth/logout', '\App\Modules\Auth\Controllers\AuthController::logout');
 

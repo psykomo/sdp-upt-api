@@ -52,7 +52,7 @@ final class AuthService
             );
         }
 
-        $user  = $this->site->hydrateUser($row);
+        $user  = $this->site->hydrateUser($row, $tenantId);
         $token = $this->jwt->encode($this->claimsFrom($user, $row));
         $this->logLogin($user->id, 'Login');
 

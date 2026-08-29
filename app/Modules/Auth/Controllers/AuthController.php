@@ -5,8 +5,10 @@ namespace App\Modules\Auth\Controllers;
 use App\Controllers\BaseController;
 use App\Modules\Auth\Services\AuthService;
 use App\Modules\Auth\Services\JwtService;
+use App\Modules\Auth\Services\SiteContextService;
 use App\Modules\Shared\Auth\AuthContext;
 use App\Modules\Shared\Http\ApiResponse;
+use App\Modules\Shared\Tenancy\TenantContext;
 use CodeIgniter\HTTP\ResponseInterface;
 
 final class AuthController extends BaseController
@@ -34,6 +36,21 @@ final class AuthController extends BaseController
         }
 
         return $this->withTokenCookie(ApiResponse::ok($result), $result['token']);
+    }
+
+    public function loginOptions()
+    {
+        $mode = (new TenantContext())->mode();
+        $site = (new SiteContextService())->resolve();
+
+        $requiresTenantId = $mode === TenantContext::MODE_DATABASE_PER_TENANT;
+        $requiresWorkingUptId = $mode === TenantContext::MODE_SHARED_DATABASE && $site['isPusat'];
+
+        return ApiResponse::ok([
+            'tenancyMode'          => $mode,
+            'requiresTenantId'     => $requiresTenantId,
+            'requiresWorkingUptId' => $requiresWorkingUptId,
+        ]);
     }
 
     public function cookie()

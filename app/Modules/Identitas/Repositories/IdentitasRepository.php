@@ -2,7 +2,7 @@
 
 namespace App\Modules\Identitas\Repositories;
 
-final class IdentitasRepository
+final class IdentitasRepository implements IdentitasRowScopeRepository
 {
     /**
      * @return array<string, mixed>|null
@@ -26,6 +26,36 @@ final class IdentitasRepository
             ->where('identitas.NOMOR_INDUK', $nomorInduk)
             ->get()
             ->getRowArray() ?: null;
+    }
+
+    /**
+     * Active STA parent perkara UPT context for row scoping (legacy ManajemenIdentitas::viewEdit).
+     *
+     * @return array{idUpt: string, kanwil: string}|null
+     */
+    public function activeStaParentPerkaraContext(string $nomorInduk): ?array
+    {
+        $row = db_connect()->table('identitas')
+            ->select('perkara.ID_UPT, upt.KANWIL')
+            ->join('perkara', 'perkara.NOMOR_INDUK = identitas.NOMOR_INDUK', 'left')
+            ->join('upt', 'perkara.ID_UPT = upt.ID_UPT', 'left')
+            ->where('identitas.NOMOR_INDUK', $nomorInduk)
+            ->where('identitas.IS_DELETED', 0)
+            ->where('perkara.IS_DELETE', 0)
+            ->where('perkara.ID_STATUS', 'STA')
+            ->where('perkara.ID_PERKARA_PARENT IS NULL', null, false)
+            ->limit(1)
+            ->get()
+            ->getRowArray();
+
+        if ($row === null || trim((string) ($row['ID_UPT'] ?? '')) === '') {
+            return null;
+        }
+
+        return [
+            'idUpt'  => (string) $row['ID_UPT'],
+            'kanwil' => (string) ($row['KANWIL'] ?? ''),
+        ];
     }
 
     /**

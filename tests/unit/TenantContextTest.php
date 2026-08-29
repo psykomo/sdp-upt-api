@@ -23,30 +23,45 @@ final class TenantContextTest extends CIUnitTestCase
         $this->assertSame(TenantContext::MODE_SINGLE, (new TenantContext())->mode());
     }
 
+    public function testDefaultPrefixIsDb(): void
+    {
+        $this->assertSame('db', (new TenantContext())->prefix());
+    }
+
     public function testNormalizeAcceptsUptKeys(): void
     {
         $this->assertSame('1', TenantContext::normalize('1'));
+        $this->assertSame('093', TenantContext::normalize('093'));
         $this->assertSame('0501', TenantContext::normalize(' 0501 '));
-        $this->assertSame('upt_1', TenantContext::normalize('upt_1'));
     }
 
     public function testNormalizeRejectsUnsafeKeys(): void
     {
         $this->assertNull(TenantContext::normalize(''));
-        $this->assertNull(TenantContext::normalize('../upt_1'));
-        $this->assertNull(TenantContext::normalize('upt-1'));
-        $this->assertNull(TenantContext::normalize('upt 1'));
+        $this->assertNull(TenantContext::normalize('../db093'));
+        $this->assertNull(TenantContext::normalize('db-1'));
+        $this->assertNull(TenantContext::normalize('db 1'));
     }
 
     public function testDatabaseNameUsesPrefixAndTenant(): void
     {
         $this->setEnv('tenancy.mode', TenantContext::MODE_DATABASE_PER_TENANT);
-        $this->setEnv('tenancy.databasePrefix', 'upt_');
 
         $tenant = new TenantContext();
-        $this->setPrivateProperty($tenant, 'tenantId', '1');
+        $this->setPrivateProperty($tenant, 'tenantId', '093');
 
-        $this->assertSame('upt_1', $tenant->databaseName());
+        $this->assertSame('db093', $tenant->databaseName());
+    }
+
+    public function testDatabaseNameWithExplicitPrefix(): void
+    {
+        $this->setEnv('tenancy.mode', TenantContext::MODE_DATABASE_PER_TENANT);
+        $this->setEnv('tenancy.databasePrefix', 'db');
+
+        $tenant = new TenantContext();
+        $this->setPrivateProperty($tenant, 'tenantId', '001');
+
+        $this->assertSame('db001', $tenant->databaseName());
     }
 
     public function testDatabasePerTenantWithoutIdFailsClosed(): void

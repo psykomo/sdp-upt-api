@@ -16,6 +16,7 @@ final class IdentitasFormService
         private readonly DeskripsiLookup $lookup = new DeskripsiLookup(),
         private readonly IdentitasCaseViewService $caseView = new IdentitasCaseViewService(),
         private readonly RbacService $rbac = new RbacService(),
+        private readonly IdentitasAccessService $access = new IdentitasAccessService(),
     ) {
     }
 
@@ -32,6 +33,8 @@ final class IdentitasFormService
                 403,
             );
         }
+
+        $this->access->assertNomorIndukAccessible($nomorInduk, $user);
 
         $row = $this->identitas->find($nomorInduk);
 

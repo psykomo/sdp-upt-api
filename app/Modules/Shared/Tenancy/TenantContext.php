@@ -7,7 +7,7 @@ namespace App\Modules\Shared\Tenancy;
  *
  * Modes: docs/TENANCY.md
  * - single: one UPT box, one local database (e.g. db_sdp)
- * - database_per_tenant: each UPT has its own schema on one MariaDB (upt_1, upt_2)
+ * - database_per_tenant: each UPT schema on one MariaDB (db093, db001 — prefix db + ID_UPT)
  * - shared_database: one database for everyone — UPT, Kanwil, and Pusat (e.g. sdp_pusat); scope rows in SQL/session
  */
 final class TenantContext
@@ -16,7 +16,7 @@ final class TenantContext
     public const MODE_DATABASE_PER_TENANT = 'database_per_tenant';
     public const MODE_SHARED_DATABASE = 'shared_database';
 
-    private const DEFAULT_PREFIX = 'upt_';
+    private const DEFAULT_PREFIX = 'db';
 
     private ?string $tenantId = null;
 

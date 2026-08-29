@@ -3,6 +3,7 @@
 namespace App\Modules\Identitas\Repositories;
 
 use App\Modules\Identitas\DTO\IdentitasSearchQuery;
+use App\Modules\Identitas\Services\IdentitasAccessService;
 use App\Modules\Shared\Auth\CurrentUser;
 use App\Modules\Shared\Support\DateFormat;
 use CodeIgniter\Database\BaseBuilder;
@@ -16,6 +17,11 @@ final class IdentitasSearchRepository
         'MANIS_KIRI', 'MANIS_KANAN',
         'KELINGKING_KIRI', 'KELINGKING_KANAN',
     ];
+
+    public function __construct(
+        private readonly IdentitasAccessService $access = new IdentitasAccessService(),
+    ) {
+    }
 
     /**
      * @return array{rows: list<array<string, mixed>>, total: int}
@@ -102,6 +108,8 @@ final class IdentitasSearchRepository
             $builder->where('perkara.ID_STATUS', 'STA');
             $builder->where('(perkara.IS_DELETE = 0 OR perkara.IS_DELETE IS NULL)', null, false);
         }
+
+        $this->access->applySearchScope($builder, $user, $query);
 
         if ($query->photoStatus === 'sudah') {
             $builder->like('identitas.FOTO_DEPAN', 'upload');

@@ -3,6 +3,7 @@
 namespace App\Modules\Auth\Services;
 
 use App\Modules\Shared\Auth\CurrentUser;
+use App\Modules\Shared\Tenancy\TenantContext;
 
 final class SiteContextService
 {
@@ -59,9 +60,57 @@ final class SiteContextService
         ];
     }
 
-    public function hydrateUser(array $pengguna): CurrentUser
+    public function hydrateUser(array $pengguna, ?string $workingUptId = null): CurrentUser
     {
         $site = $this->resolve();
+        $workingUptId = TenantContext::normalize($workingUptId);
+
+        // Merged Kanwil on national (Login.php process): Pusat boot + pengguna.KANWIL set.
+        $kanwilCode = trim((string) ($pengguna['KANWIL'] ?? ''));
+        if ($site['isPusat'] && $kanwilCode !== '' && $kanwilCode !== '0') {
+            $kanwil = db_connect()->table('kanwil')
+                ->select('KODE, URAIAN')
+                ->where('KODE', $kanwilCode)
+                ->get()
+                ->getRowArray();
+
+            return new CurrentUser(
+                id: (string) $pengguna['ID_USER'],
+                role: (string) $pengguna['ID_ROLE'],
+                name: (string) ($pengguna['NAMA'] ?? $pengguna['ID_USER']),
+                level: (string) ($pengguna['LEVEL'] ?? ''),
+                isPusat: false,
+                isKanwil: true,
+                uptId: $kanwilCode,
+                uptName: 'Kantor Wilayah ' . ($kanwil['URAIAN'] ?? $kanwilCode),
+                claims: $pengguna,
+            );
+        }
+
+        // National shared_database: optional working UPT at login (legacy upt_session).
+        if ($site['isPusat'] && $workingUptId !== null) {
+            $upt = db_connect()->table('upt')
+                ->select('ID_UPT, URAIAN')
+                ->where('ID_UPT', $workingUptId)
+                ->get()
+                ->getRowArray();
+
+            if ($upt === null) {
+                throw new \RuntimeException('ID UPT tidak dikenali.', 422);
+            }
+
+            return new CurrentUser(
+                id: (string) $pengguna['ID_USER'],
+                role: (string) $pengguna['ID_ROLE'],
+                name: (string) ($pengguna['NAMA'] ?? $pengguna['ID_USER']),
+                level: (string) ($pengguna['LEVEL'] ?? ''),
+                isPusat: false,
+                isKanwil: false,
+                uptId: (string) $upt['ID_UPT'],
+                uptName: (string) ($upt['URAIAN'] ?? $upt['ID_UPT']),
+                claims: $pengguna,
+            );
+        }
 
         return new CurrentUser(
             id: (string) $pengguna['ID_USER'],

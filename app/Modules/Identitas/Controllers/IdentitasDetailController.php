@@ -3,6 +3,7 @@
 namespace App\Modules\Identitas\Controllers;
 
 use App\Controllers\BaseController;
+use App\Modules\Identitas\Services\IdentitasAccessException;
 use App\Modules\Identitas\Services\IdentitasDeleteException;
 use App\Modules\Identitas\Services\IdentitasDeleteService;
 use App\Modules\Identitas\Services\IdentitasDetailService;
@@ -16,7 +17,11 @@ final class IdentitasDetailController extends BaseController
 {
     public function show(string $nomorInduk)
     {
-        $detail = (new IdentitasDetailService())->show($nomorInduk, AuthContext::user());
+        try {
+            $detail = (new IdentitasDetailService())->show($nomorInduk, AuthContext::user());
+        } catch (IdentitasAccessException $e) {
+            return ApiResponse::fail($e->getMessage(), $e->status, $e->errors);
+        }
         if ($detail === null) {
             return ApiResponse::fail('Identitas tidak ditemukan.', 404);
         }
@@ -28,6 +33,8 @@ final class IdentitasDetailController extends BaseController
     {
         try {
             $form = (new IdentitasFormService())->form($nomorInduk, AuthContext::user());
+        } catch (IdentitasAccessException $e) {
+            return ApiResponse::fail($e->getMessage(), $e->status, $e->errors);
         } catch (IdentitasUpdateException $e) {
             return ApiResponse::fail($e->getMessage(), $e->status, $e->errors);
         }
@@ -47,6 +54,8 @@ final class IdentitasDetailController extends BaseController
 
         try {
             $result = (new IdentitasUpdateService())->update($nomorInduk, $input, AuthContext::user());
+        } catch (IdentitasAccessException $e) {
+            return ApiResponse::fail($e->getMessage(), $e->status, $e->errors);
         } catch (IdentitasUpdateException $e) {
             return ApiResponse::fail($e->getMessage(), $e->status, $e->errors);
         }
@@ -65,6 +74,8 @@ final class IdentitasDetailController extends BaseController
 
         try {
             $result = (new IdentitasDeleteService())->delete($nomorInduk, AuthContext::user(), $grant);
+        } catch (IdentitasAccessException $e) {
+            return ApiResponse::fail($e->getMessage(), $e->status, $e->errors);
         } catch (IdentitasDeleteException $e) {
             return ApiResponse::fail($e->getMessage(), $e->status, $e->errors);
         }
