@@ -3,8 +3,10 @@
 namespace App\Modules\Identitas\Services;
 
 use App\Modules\Auth\Services\RbacService;
+use App\Modules\Dokumen\Services\DokumenService;
 use App\Modules\Identitas\Repositories\IdentitasRepository;
 use App\Modules\Identitas\Support\IdentitasPhotoResolver;
+use App\Modules\Identitas\Services\IdentitasUpdateException;
 use App\Modules\Shared\Auth\CurrentUser;
 use App\Modules\Shared\Support\DateFormat;
 use App\Modules\Shared\Support\DeskripsiLookup;
@@ -73,6 +75,7 @@ final class IdentitasFormService
             'foto'        => $this->foto($row, $legacy, $nomorInduk, $user),
             'sidikJari'   => $this->sidikJari($nomorInduk, $legacy),
             'identitasLama' => $this->similar($nomorInduk, $frontend),
+            'documents'   => (new DokumenService())->listIdentitasDocuments($nomorInduk, $user),
             'lookups'     => $this->lookups(),
         ];
     }
