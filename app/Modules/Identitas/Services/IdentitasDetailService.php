@@ -4,6 +4,7 @@ namespace App\Modules\Identitas\Services;
 
 use App\Modules\Auth\Services\RbacService;
 use App\Modules\Identitas\Repositories\IdentitasRepository;
+use App\Modules\Identitas\Support\IdentitasPhotoResolver;
 use App\Modules\Shared\Auth\CurrentUser;
 use App\Modules\Shared\Support\DateFormat;
 use App\Modules\Shared\Support\DeskripsiLookup;
@@ -18,6 +19,7 @@ final class IdentitasDetailService
         private readonly IdentitasCaseViewService $caseView = new IdentitasCaseViewService(),
         private readonly RbacService $rbac = new RbacService(),
         private readonly IdentitasAccessService $access = new IdentitasAccessService(),
+        private readonly IdentitasPhotoResolver $photos = new IdentitasPhotoResolver(),
     ) {
     }
 
@@ -56,9 +58,9 @@ final class IdentitasDetailService
             'alamat'      => $this->alamat($row, $wni),
             'pekerjaan'   => $this->pekerjaan($row),
             'keluarga'    => $this->keluarga($row),
-            'fisik'       => $this->fisik($row, $legacy),
+            'fisik'       => $this->fisik($row, $legacy, $nomorInduk, $user),
             'sidikJari'   => $this->sidikJari($nomorInduk, $legacy),
-            'foto'        => $this->foto($row, $legacy),
+            'foto'        => $this->foto($row, $legacy, $nomorInduk, $user),
             'history'     => $this->history($nomorInduk),
             'identitasLama' => $this->similar($nomorInduk, $frontend),
         ];
@@ -213,8 +215,10 @@ final class IdentitasDetailService
      * @param array<string, mixed> $row
      * @return array<string, mixed>
      */
-    private function fisik(array $row, string $legacy): array
+    private function fisik(array $row, string $legacy, string $nomorInduk, CurrentUser $user): array
     {
+        $resolved = $this->photos->resolveRow($row, $nomorInduk, $user);
+
         return [
             'tinggi'        => $row['TINGGI'] ?? null,
             'berat'         => $row['BERAT'] ?? null,
@@ -234,9 +238,9 @@ final class IdentitasDetailService
             'warnaKulit'    => $this->lookup->referensi($row['ID_WARNAKULIT'] ?? null),
             'cacat'         => $row['CACAT'] ?? null,
             'ciri'          => [
-                ['fotoUrl' => $this->mediaUrl($legacy, $row['FOTO_CIRI_1'] ?? null), 'keterangan' => $row['CIRI'] ?? null],
-                ['fotoUrl' => $this->mediaUrl($legacy, $row['FOTO_CIRI_2'] ?? null), 'keterangan' => $row['CIRI2'] ?? null],
-                ['fotoUrl' => $this->mediaUrl($legacy, $row['FOTO_CIRI_3'] ?? null), 'keterangan' => $row['CIRI3'] ?? null],
+                ['fotoUrl' => $this->mediaUrl($legacy, $resolved['FOTO_CIRI_1'] ?? null), 'keterangan' => $row['CIRI'] ?? null],
+                ['fotoUrl' => $this->mediaUrl($legacy, $resolved['FOTO_CIRI_2'] ?? null), 'keterangan' => $row['CIRI2'] ?? null],
+                ['fotoUrl' => $this->mediaUrl($legacy, $resolved['FOTO_CIRI_3'] ?? null), 'keterangan' => $row['CIRI3'] ?? null],
             ],
         ];
     }
@@ -281,13 +285,15 @@ final class IdentitasDetailService
      * @param array<string, mixed> $row
      * @return array<string, mixed>
      */
-    private function foto(array $row, string $legacy): array
+    private function foto(array $row, string $legacy, string $nomorInduk, CurrentUser $user): array
     {
+        $resolved = $this->photos->resolveRow($row, $nomorInduk, $user);
+
         return [
-            'kiri'    => $this->mediaUrl($legacy, $row['FOTO_KIRI'] ?? null),
-            'depan'   => $this->mediaUrl($legacy, $row['FOTO_DEPAN'] ?? null),
-            'kanan'   => $this->mediaUrl($legacy, $row['FOTO_KANAN'] ?? null),
-            'closeup' => $this->mediaUrl($legacy, $row['FOTO_CLOSEUP'] ?? null),
+            'kiri'    => $this->mediaUrl($legacy, $resolved['FOTO_KIRI'] ?? null),
+            'depan'   => $this->mediaUrl($legacy, $resolved['FOTO_DEPAN'] ?? null),
+            'kanan'   => $this->mediaUrl($legacy, $resolved['FOTO_KANAN'] ?? null),
+            'closeup' => $this->mediaUrl($legacy, $resolved['FOTO_CLOSEUP'] ?? null),
         ];
     }
 

@@ -5,6 +5,7 @@ namespace App\Modules\Identitas\Services;
 use App\Modules\Auth\Services\RbacService;
 use App\Modules\Identitas\DTO\IdentitasSearchQuery;
 use App\Modules\Identitas\Repositories\IdentitasSearchRepository;
+use App\Modules\Identitas\Support\IdentitasPhotoResolver;
 use App\Modules\Shared\Auth\CurrentUser;
 use App\Modules\Shared\Support\DateFormat;
 use App\Modules\Shared\Support\PublicOrigins;
@@ -15,6 +16,7 @@ final class IdentitasSearchService
         private readonly IdentitasSearchRepository $repository = new IdentitasSearchRepository(),
         private readonly IdentitasCaseViewService $caseView = new IdentitasCaseViewService(),
         private readonly RbacService $rbac = new RbacService(),
+        private readonly IdentitasPhotoResolver $photos = new IdentitasPhotoResolver(),
     ) {
     }
 
@@ -44,7 +46,7 @@ final class IdentitasSearchService
                 'jenisKelamin'    => $row['ID_JENIS_KELAMIN'] ?? null,
                 'wargaNegara'     => $row['ID_JENIS_WARGANEGARA'] ?? null,
                 'isTahanan'       => (int) ($row['tahanan'] ?? 0) === 1,
-                'fotoDepanUrl'    => $this->photoUrl($legacy, $row['FOTO_DEPAN'] ?? null),
+                'fotoDepanUrl'    => $this->photoUrl($legacy, $row, $noin, $user),
                 'links'           => [
                     'lihat'        => $frontend . '/identitas/' . rawurlencode($noin),
                     'ubah'         => $frontend . '/identitas/' . rawurlencode($noin) . '/ubah',
@@ -88,8 +90,12 @@ final class IdentitasSearchService
         ];
     }
 
-    private function photoUrl(string $legacy, ?string $path): ?string
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function photoUrl(string $legacy, array $row, string $nomorInduk, CurrentUser $user): ?string
     {
+        $path = $this->photos->resolvePath($row, 'FOTO_DEPAN', $nomorInduk, $user);
         if ($path === null || trim($path) === '' || ! str_contains($path, 'upload')) {
             return null;
         }

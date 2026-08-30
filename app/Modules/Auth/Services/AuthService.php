@@ -85,6 +85,70 @@ final class AuthService
     }
 
     /**
+     * @return array{token: string, user: array<string, mixed>}
+     */
+    public function setWorkingScope(CurrentUser $user, ?string $filterUptId, ?string $filterKanwilId): array
+    {
+        if (! $user->isHq()) {
+            throw new \RuntimeException('Mohon maaf anda tidak berhak mengubah filter wilayah.', 403);
+        }
+
+        $filterUptId    = $this->normalizeFilter($filterUptId);
+        $filterKanwilId = $this->normalizeFilter($filterKanwilId);
+
+        if ($filterUptId !== null) {
+            $upt = db_connect()->table('upt')
+                ->select('ID_UPT, KANWIL')
+                ->where('ID_UPT', $filterUptId)
+                ->get()
+                ->getRowArray();
+            if ($upt === null) {
+                throw new \RuntimeException('ID UPT tidak dikenali.', 422);
+            }
+
+            if ($user->isKanwil && (string) ($upt['KANWIL'] ?? '') !== (string) $user->uptId) {
+                throw new \RuntimeException('UPT di luar Kanwil anda.', 403);
+            }
+
+            if ($filterKanwilId !== null && (string) ($upt['KANWIL'] ?? '') !== $filterKanwilId) {
+                throw new \RuntimeException('UPT tidak berada di Kanwil yang dipilih.', 422);
+            }
+        }
+
+        if ($filterKanwilId !== null) {
+            $kanwil = db_connect()->table('kanwil')
+                ->select('KODE')
+                ->where('KODE', $filterKanwilId)
+                ->get()
+                ->getRowArray();
+            if ($kanwil === null) {
+                throw new \RuntimeException('Kode Kanwil tidak dikenali.', 422);
+            }
+        }
+
+        $claims = $user->claims;
+        if ($filterUptId === null) {
+            unset($claims['sessionFilterUptId']);
+        } else {
+            $claims['sessionFilterUptId'] = $filterUptId;
+        }
+
+        if ($filterKanwilId === null) {
+            unset($claims['sessionFilterKanwilId']);
+        } else {
+            $claims['sessionFilterKanwilId'] = $filterKanwilId;
+        }
+
+        $updated = $this->userFromClaims($claims);
+        $token   = $this->jwt->encode($claims);
+
+        return [
+            'token' => $token,
+            'user'  => $this->publicUser($updated),
+        ];
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function publicUser(CurrentUser $user, ?array $row = null): array
@@ -100,6 +164,8 @@ final class AuthService
             'isKanwil' => $user->isKanwil,
             'uptId'    => $user->uptId,
             'uptName'  => $user->uptName,
+            'sessionFilterUptId'    => $user->claims['sessionFilterUptId'] ?? null,
+            'sessionFilterKanwilId' => $user->claims['sessionFilterKanwilId'] ?? null,
         ];
     }
 
@@ -226,7 +292,19 @@ final class AuthService
             'isKanwil'  => $user->isKanwil,
             'uptId'     => $user->uptId,
             'uptName'   => $user->uptName,
+            'sessionFilterUptId'    => null,
+            'sessionFilterKanwilId' => null,
         ];
+    }
+
+    private function normalizeFilter(?string $value): ?string
+    {
+        $value = trim((string) $value);
+        if ($value === '' || strcasecmp($value, 'semua') === 0) {
+            return null;
+        }
+
+        return $value;
     }
 
     private function recentFailedCount(string $username): int

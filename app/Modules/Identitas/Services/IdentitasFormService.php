@@ -4,6 +4,7 @@ namespace App\Modules\Identitas\Services;
 
 use App\Modules\Auth\Services\RbacService;
 use App\Modules\Identitas\Repositories\IdentitasRepository;
+use App\Modules\Identitas\Support\IdentitasPhotoResolver;
 use App\Modules\Shared\Auth\CurrentUser;
 use App\Modules\Shared\Support\DateFormat;
 use App\Modules\Shared\Support\DeskripsiLookup;
@@ -17,6 +18,8 @@ final class IdentitasFormService
         private readonly IdentitasCaseViewService $caseView = new IdentitasCaseViewService(),
         private readonly RbacService $rbac = new RbacService(),
         private readonly IdentitasAccessService $access = new IdentitasAccessService(),
+        private readonly IdentitasSensitiveFieldService $sensitive = new IdentitasSensitiveFieldService(),
+        private readonly IdentitasPhotoResolver $photos = new IdentitasPhotoResolver(),
     ) {
     }
 
@@ -46,12 +49,16 @@ final class IdentitasFormService
         $frontend = PublicOrigins::frontendBase();
         $wni      = $this->wargaNegara($row) === 'WNI';
 
+        $locked = $this->sensitive->lockedFields($nomorInduk, $user);
+
         return [
             'nomorInduk'  => $nomorInduk,
             'namaLengkap' => $this->namaLengkapDisplay($row),
             'isTahanan'   => $this->identitas->isTahanan($nomorInduk),
             'access'      => $access,
             'readOnly'    => ! $access['canWrite'],
+            'canEditSensitiveFields' => $locked === [],
+            'lockedFields' => $locked,
             'case'        => $this->caseView->forNomorInduk($nomorInduk),
             'links'       => [
                 'lihat'          => $frontend . '/identitas/' . rawurlencode($nomorInduk),
@@ -63,7 +70,7 @@ final class IdentitasFormService
                 'rekamSidikJari' => $legacy . '/ManajemenIdentitas/viewEdit/' . rawurlencode($nomorInduk) . '?legacy=1',
             ],
             'values'      => $this->values($row, $nomorInduk, $wni),
-            'foto'        => $this->foto($row, $legacy),
+            'foto'        => $this->foto($row, $legacy, $nomorInduk, $user),
             'sidikJari'   => $this->sidikJari($nomorInduk, $legacy),
             'identitasLama' => $this->similar($nomorInduk, $frontend),
             'lookups'     => $this->lookups(),
@@ -224,16 +231,18 @@ final class IdentitasFormService
      * @param array<string, mixed> $row
      * @return array<string, string|null>
      */
-    private function foto(array $row, string $legacy): array
+    private function foto(array $row, string $legacy, string $nomorInduk, CurrentUser $user): array
     {
+        $resolved = $this->photos->resolveRow($row, $nomorInduk, $user);
+
         return [
-            'kiri'    => $this->mediaUrl($legacy, $row['FOTO_KIRI'] ?? null),
-            'depan'   => $this->mediaUrl($legacy, $row['FOTO_DEPAN'] ?? null),
-            'kanan'   => $this->mediaUrl($legacy, $row['FOTO_KANAN'] ?? null),
-            'closeup' => $this->mediaUrl($legacy, $row['FOTO_CLOSEUP'] ?? null),
-            'ciri1'   => $this->mediaUrl($legacy, $row['FOTO_CIRI_1'] ?? null),
-            'ciri2'   => $this->mediaUrl($legacy, $row['FOTO_CIRI_2'] ?? null),
-            'ciri3'   => $this->mediaUrl($legacy, $row['FOTO_CIRI_3'] ?? null),
+            'kiri'    => $this->mediaUrl($legacy, $resolved['FOTO_KIRI'] ?? null),
+            'depan'   => $this->mediaUrl($legacy, $resolved['FOTO_DEPAN'] ?? null),
+            'kanan'   => $this->mediaUrl($legacy, $resolved['FOTO_KANAN'] ?? null),
+            'closeup' => $this->mediaUrl($legacy, $resolved['FOTO_CLOSEUP'] ?? null),
+            'ciri1'   => $this->mediaUrl($legacy, $resolved['FOTO_CIRI_1'] ?? null),
+            'ciri2'   => $this->mediaUrl($legacy, $resolved['FOTO_CIRI_2'] ?? null),
+            'ciri3'   => $this->mediaUrl($legacy, $resolved['FOTO_CIRI_3'] ?? null),
         ];
     }
 

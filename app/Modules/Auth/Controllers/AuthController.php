@@ -84,6 +84,28 @@ final class AuthController extends BaseController
         return ApiResponse::ok($this->service()->me(AuthContext::user()));
     }
 
+    public function workingScope()
+    {
+        $json = $this->request->getJSON(true) ?? [];
+        $filterUptId    = $json['filterUptId'] ?? $this->request->getPost('filterUptId') ?? null;
+        $filterKanwilId = $json['filterKanwilId'] ?? $this->request->getPost('filterKanwilId') ?? null;
+
+        try {
+            $result = $this->service()->setWorkingScope(
+                AuthContext::user(),
+                $filterUptId !== null ? (string) $filterUptId : null,
+                $filterKanwilId !== null ? (string) $filterKanwilId : null,
+            );
+        } catch (\RuntimeException $e) {
+            $code = $e->getCode();
+            $status = in_array($code, [403, 422], true) ? $code : 400;
+
+            return ApiResponse::fail($e->getMessage(), $status);
+        }
+
+        return $this->withTokenCookie(ApiResponse::ok($result), $result['token']);
+    }
+
     public function supervisor()
     {
         $json = $this->request->getJSON(true) ?? [];

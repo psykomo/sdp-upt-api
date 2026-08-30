@@ -41,6 +41,7 @@ final class IdentitasUpdateService
         private readonly IdentitasRepository $identitas = new IdentitasRepository(),
         private readonly RbacService $rbac = new RbacService(),
         private readonly IdentitasAccessService $access = new IdentitasAccessService(),
+        private readonly IdentitasSensitiveFieldService $sensitive = new IdentitasSensitiveFieldService(),
     ) {
     }
 
@@ -68,6 +69,10 @@ final class IdentitasUpdateService
         }
 
         $errors = $this->validate($input, $existing);
+        $errors = array_merge(
+            $errors,
+            $this->sensitive->validateChanges($input, $existing, $nomorInduk, $user),
+        );
         if ($errors !== []) {
             throw new IdentitasUpdateException('Data identitas belum lengkap.', $errors);
         }

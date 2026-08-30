@@ -2,7 +2,7 @@
 
 namespace App\Modules\Identitas\Repositories;
 
-final class IdentitasRepository implements IdentitasRowScopeRepository
+final class IdentitasRepository implements IdentitasRepositoryInterface
 {
     /**
      * @return array<string, mixed>|null
@@ -277,6 +277,105 @@ final class IdentitasRepository implements IdentitasRowScopeRepository
             ->select('ID_PERKARA')
             ->where('NOMOR_INDUK', $nomorInduk)
             ->where('IS_DELETE', 0)
+            ->get()
+            ->getRowArray();
+
+        return $row !== null;
+    }
+
+    /**
+     * Mutasi UPT rows for national photo path fallback (Lib_identitas::check_foto_mutasi_upt).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function mutasiPhotoRows(string $nomorInduk): array
+    {
+        return db_connect()->table('perkara p')
+            ->select('p.ID_UPT, muh.ID_UPT_ASAL, i.FOTO_DEPAN, i.FOTO_KANAN, i.FOTO_KIRI, i.FOTO_CIRI_1, i.FOTO_CIRI_2, i.FOTO_CIRI_3')
+            ->join('identitas i', 'i.NOMOR_INDUK = p.NOMOR_INDUK', 'left')
+            ->join('mutasi_upt_detail mud', 'mud.ID_PERKARA = p.ID_PERKARA AND mud.DITOLAK = 0', 'left')
+            ->join('mutasi_upt_header muh', 'muh.ID_MUTASI_TAHANAN = mud.ID_MUTASI_UPT_HEADER', 'left')
+            ->where('i.NOMOR_INDUK', $nomorInduk)
+            ->where('p.IS_DELETE', 0)
+            ->where('i.IS_DELETED', 0)
+            ->orderBy('muh.TGL_ENTRY', 'DESC')
+            ->get()
+            ->getResultArray();
+    }
+
+    /**
+     * STA parent perkara id for AKSES002 gate (ManajemenIdentitas::viewEdit).
+     */
+    public function activeStaParentPerkaraId(string $nomorInduk): ?string
+    {
+        $row = db_connect()->table('identitas')
+            ->select('perkara.ID_PERKARA')
+            ->join('perkara', 'perkara.NOMOR_INDUK = identitas.NOMOR_INDUK', 'left')
+            ->where('identitas.NOMOR_INDUK', $nomorInduk)
+            ->where('identitas.IS_DELETED', 0)
+            ->where('perkara.IS_DELETE', 0)
+            ->where('perkara.ID_STATUS', 'STA')
+            ->where('perkara.ID_PERKARA_PARENT IS NULL', null, false)
+            ->limit(1)
+            ->get()
+            ->getRowArray();
+
+        $id = trim((string) ($row['ID_PERKARA'] ?? ''));
+
+        return $id !== '' ? $id : null;
+    }
+
+    /**
+     * UPT id on STA parent perkara (fallback when JWT uptId empty on Pusat).
+     */
+    public function activeStaParentUptId(string $nomorInduk): ?string
+    {
+        $context = $this->activeStaParentPerkaraContext($nomorInduk);
+
+        return $context !== null ? $context['idUpt'] : null;
+    }
+
+    public function hasProcessedRemisi(string $idPerkara): bool
+    {
+        $row = db_connect()->table('remisi')
+            ->select('TGL_PERUNTUKKAN')
+            ->where('ID_PERKARA', $idPerkara)
+            ->groupStart()
+                ->where('STATUS_RMS', 2)
+                ->orWhere('STATUS_RMS', 4)
+                ->orGroupStart()
+                    ->where('STATUS_RMS', 1)
+                    ->where('NMR_SRT_SK IS NOT NULL', null, false)
+                ->groupEnd()
+            ->groupEnd()
+            ->where('IS_PROCESS', 1)
+            ->where('IS_DELETED', 0)
+            ->orderBy('TGL_PERUNTUKKAN', 'ASC')
+            ->limit(1)
+            ->get()
+            ->getRowArray();
+
+        return $row !== null && trim((string) ($row['TGL_PERUNTUKKAN'] ?? '')) !== '';
+    }
+
+    public function hasSidangTppAkses002(string $idPerkara, string $idUpt): bool
+    {
+        $today = date('Y-m-d');
+
+        $row = db_connect()->table('sidang_tpp_usulan_perbaikan pr')
+            ->select('pd.ID_SIDANG_TPP_USULAN_PERBAIKAN_DETAIL')
+            ->join(
+                'sidang_tpp_usulan_perbaikan_detail pd',
+                'pr.ID_SIDANG_TPP_USULAN_PERBAIKAN = pd.ID_SIDANG_TPP_USULAN_PERBAIKAN',
+            )
+            ->where('pr.ID_UPT', $idUpt)
+            ->where('pr.JENIS', 'akses_data')
+            ->where('pr.TABLE', 'perkara')
+            ->where('pr.ID_REF', $idPerkara)
+            ->where('pr.TGL_AKSES_MULAI <=', $today)
+            ->where('pr.TGL_AKSES_SELESAI >=', $today)
+            ->where('pd.ID_LOOKUP', 'AKSES002')
+            ->limit(1)
             ->get()
             ->getRowArray();
 

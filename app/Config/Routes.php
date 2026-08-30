@@ -26,6 +26,7 @@ $routes->group('api/v1', static function (RouteCollection $routes) {
 
     $routes->group('', ['filter' => 'jwt'], static function (RouteCollection $routes) {
         $routes->get('auth/me', '\App\Modules\Auth\Controllers\AuthController::me');
+        $routes->post('auth/working-scope', '\App\Modules\Auth\Controllers\AuthController::workingScope');
         $routes->post('auth/supervisor', '\App\Modules\Auth\Controllers\AuthController::supervisor');
         $routes->get('lookups/(:segment)', '\App\Modules\Lookup\Controllers\LookupController::group/$1');
 
