@@ -81,6 +81,57 @@ final class IdentitasFormService
     }
 
     /**
+     * Empty create form — no nomor induk assert (row does not exist yet).
+     *
+     * @return array<string, mixed>
+     */
+    public function emptyForm(CurrentUser $user): array
+    {
+        $access = $this->rbac->accessFor($user, RbacService::MENU_IDENTITAS);
+        if (! $access['canWrite']) {
+            throw new IdentitasUpdateException(
+                'Mohon maaf anda tidak berhak menambah data identitas.',
+                [],
+                403,
+            );
+        }
+
+        $frontend = PublicOrigins::frontendBase();
+        $empty    = $this->values([], '', true);
+        $empty['nomorInduk'] = '';
+        $empty['nomorIndukSimilar'] = '';
+        $empty['kewarganegaraan'] = 'WNI';
+
+        return [
+            'nomorInduk'             => null,
+            'namaLengkap'            => '',
+            'isTahanan'              => false,
+            'access'                 => $access,
+            'readOnly'               => false,
+            'canEditSensitiveFields' => true,
+            'lockedFields'           => [],
+            'case'                   => null,
+            'links'                  => [
+                'kembali' => $frontend . '/identitas',
+            ],
+            'values'                 => $empty,
+            'foto'                   => [
+                'kiri' => null, 'depan' => null, 'kanan' => null, 'closeup' => null,
+                'ciri1' => null, 'ciri2' => null, 'ciri3' => null,
+            ],
+            'sidikJari'              => [
+                'jempolKanan' => null, 'telunjukKanan' => null, 'tengahKanan' => null,
+                'manisKanan' => null, 'kelingkingKanan' => null,
+                'jempolKiri' => null, 'telunjukKiri' => null, 'tengahKiri' => null,
+                'manisKiri' => null, 'kelingkingKiri' => null,
+            ],
+            'identitasLama'          => [],
+            'documents'              => [],
+            'lookups'                => $this->lookups(),
+        ];
+    }
+
+    /**
      * @param array<string, mixed> $row
      * @return array<string, mixed>
      */

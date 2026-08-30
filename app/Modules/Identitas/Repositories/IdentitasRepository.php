@@ -67,6 +67,62 @@ final class IdentitasRepository implements IdentitasRepositoryInterface
     }
 
     /**
+     * @param array<string, mixed> $row
+     */
+    public function insert(array $row): void
+    {
+        db_connect()->table('identitas')->insert($row);
+    }
+
+    /**
+     * Legacy func::createNomorInduk — prefix is UPT id + Ymd + 4-digit sequence.
+     */
+    public function nextNomorInduk(string $uptId): string
+    {
+        $uptId  = trim($uptId);
+        $prefix = $uptId . date('Ymd');
+        $row    = db_connect()->table('identitas')
+            ->selectMax('NOMOR_INDUK', 'maxId')
+            ->like('NOMOR_INDUK', $prefix, 'after')
+            ->get()
+            ->getRowArray();
+
+        $maxId = (string) ($row['maxId'] ?? '');
+        $seq   = 1;
+        if ($maxId !== '' && str_starts_with($maxId, $prefix)) {
+            $tail = substr($maxId, strlen($prefix));
+            if (ctype_digit($tail)) {
+                $seq = (int) $tail + 1;
+            }
+        }
+
+        return $prefix . str_pad((string) $seq, 4, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * Legacy AddIdentitas::validasiLokal — NM_IBU is matched to the second argument
+     * (caller passes NM_AYAH). Port the quirk; do not "fix" to namaIbu.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function findCreateDuplicates(string $namaLengkap, string $nmIbuComparedToAyah, string $tanggalLahirYmd, ?string $tempatLahirId): array
+    {
+        $builder = db_connect()->table('identitas')
+            ->select('identitas.NOMOR_INDUK, identitas.NAMA_LENGKAP, identitas.TANGGAL_LAHIR, identitas.NM_IBU, identitas.NM_AYAH, identitas.ID_JENIS_KELAMIN, identitas.KONSOLIDASI, dati2.DESKRIPSI AS tempatLahir')
+            ->join('dati2', 'identitas.ID_TEMPAT_LAHIR = dati2.ID_DATI2', 'left')
+            ->like('identitas.NAMA_LENGKAP', $namaLengkap)
+            ->where('identitas.IS_DELETED', '0')
+            ->where('identitas.TANGGAL_LAHIR', $tanggalLahirYmd)
+            ->where('identitas.NM_IBU', $nmIbuComparedToAyah);
+
+        if ($tempatLahirId !== null && $tempatLahirId !== '') {
+            $builder->where('identitas.ID_TEMPAT_LAHIR', $tempatLahirId);
+        }
+
+        return $builder->get()->getResultArray();
+    }
+
+    /**
      * @return array<string, mixed>|null
      */
     public function findSidikJari(string $nomorInduk, bool $requireTanggal = false): ?array

@@ -33,6 +33,8 @@ $routes->group('api/v1', static function (RouteCollection $routes) {
         $routes->group('', ['filter' => 'menu:10'], static function (RouteCollection $routes) {
             $routes->get('identitas', '\App\Modules\Identitas\Controllers\IdentitasSearchController::index');
             $routes->get('identitas/export', '\App\Modules\Identitas\Controllers\IdentitasSearchController::export');
+            $routes->get('identitas/form', '\App\Modules\Identitas\Controllers\IdentitasDetailController::createForm');
+            $routes->post('identitas', '\App\Modules\Identitas\Controllers\IdentitasDetailController::create');
             $routes->get('identitas/(:segment)/documents', '\App\Modules\Dokumen\Controllers\IdentitasDokumenController::index/$1');
             $routes->post('identitas/(:segment)/documents', '\App\Modules\Dokumen\Controllers\IdentitasDokumenController::create/$1');
             $routes->get('identitas/(:segment)/form', '\App\Modules\Identitas\Controllers\IdentitasDetailController::form/$1');

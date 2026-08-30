@@ -54,7 +54,7 @@ final class IdentitasSearchService
                     'cetakIdentitas' => $legacy . '/LaporanIdentitas/cetak_identitas_napi/' . rawurlencode($noin),
                     'cetakTahanan'   => $legacy . '/LaporanIdentitas/cetak_identitas_tahanan/' . rawurlencode($noin),
                     'cetakSidikJari' => $legacy . '/DaftarSidikJari/cetak_sidikjari/' . rawurlencode($noin),
-                    'tambah'         => $legacy . '/AddIdentitas',
+                    'tambah'         => $frontend . '/identitas/baru',
                 ],
             ];
 
@@ -84,6 +84,9 @@ final class IdentitasSearchService
                 'order'              => $query->order,
             ],
             'access' => $access,
+            'links'  => [
+                'tambah' => $frontend . '/identitas/baru',
+            ],
             'columns' => $user->isHq()
                 ? ['nomorInduk', 'nomorRegistrasi', 'tanggalMasukUpt', 'namaLengkap', 'tanggalLahir', 'alamat', 'asalUpt', 'verifikasi']
                 : ['nomorInduk', 'nomorRegistrasi', 'tanggalMasukUpt', 'namaLengkap', 'tanggalLahir', 'alamat', 'agama', 'verifikasi'],

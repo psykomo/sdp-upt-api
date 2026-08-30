@@ -4,6 +4,8 @@ namespace App\Modules\Identitas\Controllers;
 
 use App\Controllers\BaseController;
 use App\Modules\Identitas\Services\IdentitasAccessException;
+use App\Modules\Identitas\Services\IdentitasCreateException;
+use App\Modules\Identitas\Services\IdentitasCreateService;
 use App\Modules\Identitas\Services\IdentitasDeleteException;
 use App\Modules\Identitas\Services\IdentitasDeleteService;
 use App\Modules\Identitas\Services\IdentitasDetailService;
@@ -15,6 +17,43 @@ use App\Modules\Shared\Http\ApiResponse;
 
 final class IdentitasDetailController extends BaseController
 {
+    public function createForm()
+    {
+        try {
+            $form = (new IdentitasFormService())->emptyForm(AuthContext::user());
+        } catch (IdentitasUpdateException $e) {
+            return ApiResponse::fail($e->getMessage(), $e->status, $e->errors);
+        }
+
+        return ApiResponse::ok($form);
+    }
+
+    public function create()
+    {
+        $input = $this->request->getJSON(true);
+        if (! is_array($input)) {
+            $input = $this->request->getPost() ?? [];
+        }
+
+        try {
+            $result = (new IdentitasCreateService())->create($input, AuthContext::user());
+        } catch (IdentitasCreateException $e) {
+            if ($e->status === 409) {
+                return ApiResponse::json([
+                    'ok'      => false,
+                    'message' => $e->getMessage(),
+                    'matches' => $e->matches,
+                ], 409);
+            }
+
+            return ApiResponse::fail($e->getMessage(), $e->status, $e->errors);
+        } catch (IdentitasUpdateException $e) {
+            return ApiResponse::fail($e->getMessage(), $e->status, $e->errors);
+        }
+
+        return ApiResponse::ok($result, 201);
+    }
+
     public function show(string $nomorInduk)
     {
         try {
