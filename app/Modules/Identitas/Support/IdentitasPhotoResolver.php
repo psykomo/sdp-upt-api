@@ -5,6 +5,7 @@ namespace App\Modules\Identitas\Support;
 use App\Modules\Identitas\Repositories\IdentitasRepository;
 use App\Modules\Identitas\Repositories\IdentitasRepositoryInterface;
 use App\Modules\Shared\Auth\CurrentUser;
+use App\Modules\Shared\Support\StoredUploadPath;
 
 final class IdentitasPhotoResolver
 {

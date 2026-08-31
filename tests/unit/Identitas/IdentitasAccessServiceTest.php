@@ -78,4 +78,27 @@ final class IdentitasAccessServiceTest extends TestCase
         $this->expectException(IdentitasAccessException::class);
         $service->assertNomorIndukAccessible('NO001', $user);
     }
+
+    public function testParentPerkaraUptIdReturnsIdFromContext(): void
+    {
+        $repo = $this->createMock(IdentitasRowScopeRepository::class);
+        $repo->method('activeStaParentPerkaraContext')->willReturn([
+            'idUpt'  => 'UPT9',
+            'kanwil' => 'KW1',
+        ]);
+
+        $service = new IdentitasAccessService($repo);
+
+        $this->assertSame('UPT9', $service->parentPerkaraUptId('NO001'));
+    }
+
+    public function testParentPerkaraUptIdReturnsNullWhenMissing(): void
+    {
+        $repo = $this->createMock(IdentitasRowScopeRepository::class);
+        $repo->method('activeStaParentPerkaraContext')->willReturn(null);
+
+        $service = new IdentitasAccessService($repo);
+
+        $this->assertNull($service->parentPerkaraUptId('NO001'));
+    }
 }

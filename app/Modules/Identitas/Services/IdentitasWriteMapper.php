@@ -2,7 +2,7 @@
 
 namespace App\Modules\Identitas\Services;
 
-use App\Modules\Identitas\Support\StoredUploadPath;
+use App\Modules\Shared\Support\StoredUploadPath;
 use App\Modules\Shared\Auth\CurrentUser;
 use App\Modules\Shared\Support\DateFormat;
 

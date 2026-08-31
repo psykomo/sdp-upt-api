@@ -5,7 +5,6 @@ namespace App\Modules\Dokumen\Controllers;
 use App\Controllers\BaseController;
 use App\Modules\Dokumen\Services\DokumenException;
 use App\Modules\Dokumen\Services\DokumenService;
-use App\Modules\Identitas\Services\IdentitasAccessException;
 use App\Modules\Shared\Auth\AuthContext;
 use App\Modules\Shared\Http\ApiResponse;
 
@@ -39,8 +38,6 @@ final class DokumenController extends BaseController
                 $file && $file->isValid() ? (string) $file->getClientMimeType() : null,
                 $file && $file->isValid() ? (string) file_get_contents($file->getTempName()) : null,
             );
-        } catch (IdentitasAccessException $e) {
-            return ApiResponse::fail($e->getMessage(), $e->status, $e->errors);
         } catch (DokumenException $e) {
             return ApiResponse::fail($e->getMessage(), $e->status, $e->errors);
         }
@@ -52,8 +49,6 @@ final class DokumenController extends BaseController
     {
         try {
             (new DokumenService())->deleteDocument($idDokumen, AuthContext::user());
-        } catch (IdentitasAccessException $e) {
-            return ApiResponse::fail($e->getMessage(), $e->status, $e->errors);
         } catch (DokumenException $e) {
             return ApiResponse::fail($e->getMessage(), $e->status, $e->errors);
         }
@@ -65,8 +60,6 @@ final class DokumenController extends BaseController
     {
         try {
             $file = (new DokumenService())->streamFile($idDokumen, AuthContext::user());
-        } catch (IdentitasAccessException $e) {
-            return ApiResponse::fail($e->getMessage(), $e->status, $e->errors);
         } catch (DokumenException $e) {
             return ApiResponse::fail($e->getMessage(), $e->status, $e->errors);
         }

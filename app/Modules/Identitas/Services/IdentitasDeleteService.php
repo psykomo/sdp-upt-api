@@ -5,7 +5,7 @@ namespace App\Modules\Identitas\Services;
 use App\Modules\Auth\Services\AuthService;
 use App\Modules\Auth\Services\RbacService;
 use App\Modules\Identitas\Repositories\IdentitasRepository;
-use App\Modules\Identitas\Support\StoredUploadPath;
+use App\Modules\Shared\Support\StoredUploadPath;
 use App\Modules\Shared\Auth\CurrentUser;
 use App\Modules\Shared\Database\UnitOfWork;
 

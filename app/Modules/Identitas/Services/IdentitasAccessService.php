@@ -36,6 +36,18 @@ final class IdentitasAccessService
         $this->assertSessionFilters($nomorInduk, $user);
     }
 
+    public function parentPerkaraUptId(string $nomorInduk): ?string
+    {
+        $context = $this->identitas->activeStaParentPerkaraContext($nomorInduk);
+        if ($context === null) {
+            return null;
+        }
+
+        $idUpt = trim((string) ($context['idUpt'] ?? ''));
+
+        return $idUpt !== '' ? $idUpt : null;
+    }
+
     public function applySearchScope(BaseBuilder $builder, CurrentUser $user, IdentitasSearchQuery $query): void
     {
         $scope = $this->resolveScope($user);

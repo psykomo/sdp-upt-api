@@ -5,7 +5,6 @@ namespace App\Modules\Dokumen\Controllers;
 use App\Controllers\BaseController;
 use App\Modules\Dokumen\Services\DokumenException;
 use App\Modules\Dokumen\Services\DokumenService;
-use App\Modules\Identitas\Services\IdentitasAccessException;
 use App\Modules\Shared\Auth\AuthContext;
 use App\Modules\Shared\Http\ApiResponse;
 
@@ -15,7 +14,7 @@ final class IdentitasDokumenController extends BaseController
     {
         try {
             $items = (new DokumenService())->listIdentitasDocuments($nomorInduk, AuthContext::user());
-        } catch (IdentitasAccessException $e) {
+        } catch (DokumenException $e) {
             return ApiResponse::fail($e->getMessage(), $e->status, $e->errors);
         }
 
@@ -39,8 +38,6 @@ final class IdentitasDokumenController extends BaseController
                 (string) $file->getClientMimeType(),
                 (string) file_get_contents($file->getTempName()),
             );
-        } catch (IdentitasAccessException $e) {
-            return ApiResponse::fail($e->getMessage(), $e->status, $e->errors);
         } catch (DokumenException $e) {
             return ApiResponse::fail($e->getMessage(), $e->status, $e->errors);
         }

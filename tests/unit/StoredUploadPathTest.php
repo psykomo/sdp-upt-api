@@ -1,6 +1,6 @@
 <?php
 
-use App\Modules\Identitas\Support\StoredUploadPath;
+use App\Modules\Shared\Support\StoredUploadPath;
 use CodeIgniter\Test\CIUnitTestCase;
 
 /**

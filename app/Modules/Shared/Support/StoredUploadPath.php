@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Modules\Identitas\Support;
+namespace App\Modules\Shared\Support;
 
 final class StoredUploadPath
 {

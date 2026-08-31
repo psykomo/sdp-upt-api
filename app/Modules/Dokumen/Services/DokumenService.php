@@ -4,23 +4,8 @@ namespace App\Modules\Dokumen\Services;
 
 use App\Modules\Auth\Services\RbacService;
 use App\Modules\Dokumen\Repositories\DokumenRepository;
-use App\Modules\Identitas\Repositories\IdentitasRepository;
-use App\Modules\Identitas\Support\StoredUploadPath;
+use App\Modules\Shared\Support\StoredUploadPath;
 use App\Modules\Shared\Auth\CurrentUser;
-
-final class DokumenException extends \RuntimeException
-{
-    /**
-     * @param array<string, string> $errors
-     */
-    public function __construct(
-        string $message,
-        public readonly array $errors = [],
-        public readonly int $status = 422,
-    ) {
-        parent::__construct($message);
-    }
-}
 
 final class DokumenService
 {
@@ -30,7 +15,6 @@ final class DokumenService
     public function __construct(
         private readonly DokumenRepository $dokumen = new DokumenRepository(),
         private readonly DokumenAccessService $access = new DokumenAccessService(),
-        private readonly IdentitasRepository $identitas = new IdentitasRepository(),
         private readonly RbacService $rbac = new RbacService(),
     ) {
     }
@@ -90,7 +74,7 @@ final class DokumenService
         $this->access->assertIdentitasNomorInduk($nomorInduk, $user);
         $this->validatePdf($originalName, $mimeType, $bytes);
 
-        $uptId = $this->resolveUptId($nomorInduk, $user);
+        $uptId = $this->access->resolveStorageUptId($nomorInduk, $user);
         $stored = $this->storeFile($uptId, $originalName, $bytes);
         $id     = $this->nextDocumentId($uptId, $user);
 
@@ -201,19 +185,6 @@ final class DokumenService
         if (! $access['canWrite']) {
             throw new DokumenException('Mohon maaf anda tidak berhak mengubah dokumen.', [], 403);
         }
-    }
-
-    private function resolveUptId(string $nomorInduk, CurrentUser $user): string
-    {
-        $uptId = trim((string) ($user->uptId ?? ''));
-        if ($uptId !== '') {
-            return $uptId;
-        }
-
-        $ctx = $this->identitas->activeStaParentPerkaraContext($nomorInduk);
-        $fallback = trim((string) ($ctx['idUpt'] ?? ''));
-
-        return $fallback !== '' ? $fallback : '000';
     }
 
     private function nextDocumentId(string $uptId, CurrentUser $user): string

@@ -15,7 +15,19 @@ final class DokumenAccessService
 
     public function assertIdentitasNomorInduk(string $nomorInduk, CurrentUser $user): void
     {
-        $this->identitas->assertNomorIndukAccessible($nomorInduk, $user);
+        $this->guardIdentitas(fn () => $this->identitas->assertNomorIndukAccessible($nomorInduk, $user));
+    }
+
+    public function resolveStorageUptId(string $nomorInduk, CurrentUser $user): string
+    {
+        $uptId = trim((string) ($user->uptId ?? ''));
+        if ($uptId !== '') {
+            return $uptId;
+        }
+
+        $fallback = trim((string) ($this->identitas->parentPerkaraUptId($nomorInduk) ?? ''));
+
+        return $fallback !== '' ? $fallback : '000';
     }
 
     /**
@@ -27,11 +39,23 @@ final class DokumenAccessService
         $reference = trim((string) ($row['ID_REFERENCE'] ?? ''));
 
         if ($jenis === 'identitas' && $reference !== '') {
-            $this->identitas->assertNomorIndukAccessible($reference, $user);
+            $this->guardIdentitas(fn () => $this->identitas->assertNomorIndukAccessible($reference, $user));
 
             return;
         }
 
-        throw new IdentitasAccessException('Mohon maaf anda tidak berhak mengakses dokumen ini.');
+        throw new DokumenException('Mohon maaf anda tidak berhak mengakses dokumen ini.', [], 403);
+    }
+
+    /**
+     * @param callable(): void $action
+     */
+    private function guardIdentitas(callable $action): void
+    {
+        try {
+            $action();
+        } catch (IdentitasAccessException $e) {
+            throw new DokumenException($e->getMessage(), $e->errors, $e->status);
+        }
     }
 }
