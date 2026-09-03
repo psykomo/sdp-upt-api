@@ -24,6 +24,10 @@ $routes->group('api/v1', static function (RouteCollection $routes) {
     $routes->post('auth/cookie', '\App\Modules\Auth\Controllers\AuthController::cookie');
     $routes->post('auth/logout', '\App\Modules\Auth\Controllers\AuthController::logout');
 
+    // Queue API for legacy UPT (Secured via API Key filter / Service Token, not JWT user session)
+    $routes->post('konsolidasi/upload', '\App\Modules\Queue\Controllers\QueueController::upload');
+    $routes->get('queue/status/(:segment)', '\App\Modules\Queue\Controllers\QueueController::status/$1');
+
     $routes->group('', ['filter' => 'jwt'], static function (RouteCollection $routes) {
         $routes->get('auth/me', '\App\Modules\Auth\Controllers\AuthController::me');
         $routes->post('auth/working-scope', '\App\Modules\Auth\Controllers\AuthController::workingScope');
