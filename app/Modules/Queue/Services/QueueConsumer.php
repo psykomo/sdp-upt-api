@@ -29,32 +29,38 @@ final class QueueConsumer
             return false;
         }
 
+        $jobId       = $job['ID'] ?? $job['id'];
+        $version     = (int) ($job['VERSION'] ?? $job['version']);
+        $jobType     = $job['TYPE'] ?? $job['type'];
+        $jobPayload  = $job['PAYLOAD'] ?? $job['payload'];
+        $attempts    = (int) ($job['ATTEMPTS'] ?? $job['attempts']);
+        $maxAttempts = (int) ($job['MAX_ATTEMPTS'] ?? $job['max_attempts']);
+
         // 2. Try to claim it using CAS
-        $claimed = $this->repository->claim($job['id'], (int) $job['version']);
+        $claimed = $this->repository->claim($jobId, $version);
         if (!$claimed) {
             // We lost the race to another worker. Just return and try again next tick.
             return false;
         }
 
         // 3. We own the job. Process it.
-        $payload = json_decode($job['payload'], true);
+        $payload = json_decode($jobPayload, true);
         
         try {
-            $handler = $this->resolveHandler($job['type']);
+            $handler = $this->resolveHandler($jobType);
             if (!$handler) {
-                throw new \RuntimeException("No handler registered for job type: {$job['type']}");
+                throw new \RuntimeException("No handler registered for job type: {$jobType}");
             }
 
             // Execute the handler
-            $handler->handle($payload, $job['id']);
+            $handler->handle($payload, $jobId);
 
             // 4a. Mark as completed
-            $this->repository->complete($job['id']);
+            $this->repository->complete($jobId);
         } catch (\Throwable $e) {
             // 4b. Handle failure
-            $attempts = (int) $job['attempts'] + 1; // +1 because claim() increments it in DB, but $job contains old value
-            $maxAttempts = (int) $job['max_attempts'];
-            $this->repository->fail($job['id'], $attempts, $maxAttempts, $e->getMessage() . "\n" . $e->getTraceAsString());
+            $attempts = $attempts + 1; // +1 because claim() increments it in DB, but $job contains old value
+            $this->repository->fail($jobId, $attempts, $maxAttempts, $e->getMessage() . "\n" . $e->getTraceAsString());
         }
 
         return true;

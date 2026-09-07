@@ -3,10 +3,11 @@
 namespace App\Modules\Queue\Handlers;
 
 use App\Modules\Queue\Repositories\QueueRepository;
+use App\Modules\Perkara\Services\EkspirasiCalculatorService;
+use App\Modules\Perkara\Repositories\EkspirasiRepository;
 use CodeIgniter\Database\BaseConnection;
 use Config\Database;
 use Exception;
-use ZipArchive;
 
 final class KonsolidasiRestoreHandler implements JobHandlerInterface
 {
@@ -16,6 +17,10 @@ final class KonsolidasiRestoreHandler implements JobHandlerInterface
     // Temporary storage for parsed ini configs
     private ?array $tablesFields = null;
     private ?array $tablesInfo = null;
+    private ?array $infoConfig = null;
+
+    // Track perkara for ekspirasi recalculation
+    private array $perkaraToRecalculate = [];
 
     public function __construct()
     {
@@ -25,6 +30,9 @@ final class KonsolidasiRestoreHandler implements JobHandlerInterface
 
     public function handle(array $payload, string $jobId): void
     {
+        ini_set('memory_limit', '-1');
+        set_time_limit(0);
+
         $filePath = $payload['file_path'] ?? '';
         $satkerId = $payload['satker_id'] ?? '';
         $dataType = $payload['data_type'] ?? 'data';
@@ -43,6 +51,11 @@ final class KonsolidasiRestoreHandler implements JobHandlerInterface
             $this->loadIniConfigs($restoreTempPath);
 
             if (empty($this->tablesFields)) {
+                $format = $this->infoConfig['general']['format'] ?? '';
+                if ($format === 'bin-log' || $format === 'sql') {
+                    $this->repository->updateProgress($jobId, 100, 'File binlog/sql diterima dan diverifikasi.');
+                    return;
+                }
                 throw new \RuntimeException("Konfigurasi tables_fields.ini tidak ditemukan atau kosong.");
             }
 
@@ -60,12 +73,59 @@ final class KonsolidasiRestoreHandler implements JobHandlerInterface
                 $this->restoreFileToTable($restoreTempPath, $csvFileName, $tableName, $dataType, $satkerId, $isFromUpt);
             }
 
-            // TODO: Post-import side effects (Recalculate ekspirasi, integrasi remisi, dsb)
+            // TODO: Integrasi remisi (update status persetujuan, dll) kalau perlu
+
+            // Post-import side effects: Recalculate Ekspirasi
+            if (!empty($this->perkaraToRecalculate)) {
+                $uniquePerkara = array_unique($this->perkaraToRecalculate);
+                $totalPerkara = count($uniquePerkara);
+                $this->repository->updateProgress($jobId, 95, "Recalculating ekspirasi untuk {$totalPerkara} perkara...");
+                
+                $calculator = new EkspirasiCalculatorService(new EkspirasiRepository());
+                
+                foreach ($uniquePerkara as $idPerkara) {
+                    try {
+                        $hasil = $calculator->calculatorEkspirasi($idPerkara);
+                        if (!empty($hasil)) {
+                            // Update perkara table with calculated values
+                            $updateData = [
+                                'TGL_EKSPIRASI_SEBENARNYA' => $hasil['hasil_awal'] ?? null,
+                                'TGL_EKSPIRASI' => $hasil['hasil'] ?? null,
+                                'TGL_SEPERTIGA' => $hasil['hasil1_3'] ?? null,
+                                'TGL_SETENGAH' => $hasil['hasil1_2'] ?? null,
+                                'TGL_DUAPERTIGA' => $hasil['hasil2_3'] ?? null,
+                            ];
+                            $this->db->table('perkara')
+                                ->where('ID_PERKARA', $idPerkara)
+                                ->update($updateData);
+                        }
+                    } catch (Exception $e) {
+                        log_message('error', "Gagal recalculate ekspirasi perkara {$idPerkara}: " . $e->getMessage());
+                    }
+                }
+            }
 
             $this->repository->updateProgress($jobId, 100, 'Konsolidasi selesai.');
         } finally {
             $this->cleanupTemp($restoreTempPath);
         }
+    }
+
+
+    private function find7zaBinary(): ?string
+    {
+        $custom = trim(env('SDP_7ZA_PATH') ?? '', " \t\n\r\0\x0B\"'");
+        if (!empty($custom)) {
+            $real = realpath($custom);
+            if ($real && file_exists($real)) {
+                return $real;
+            }
+            if (file_exists($custom)) {
+                return $custom;
+            }
+        }
+
+        return null;
     }
 
     private function extractZip(string $filePath): string
@@ -75,27 +135,50 @@ final class KonsolidasiRestoreHandler implements JobHandlerInterface
             mkdir($tempPath, 0777, true);
         }
 
-        $zip = new ZipArchive();
-        if ($zip->open($filePath) === TRUE) {
-            $zip->extractTo($tempPath);
-            $zip->close();
-        } else {
-            throw new \RuntimeException("Gagal membuka file ZIP: {$filePath}");
+        $sevenZip = $this->find7zaBinary();
+        if ($sevenZip !== null) {
+            $passwords   = ['D9OxN12RcT84sOghHyF', 'AKdL342LKJSFL34kdfL', 'UUCIX6570KHIYU5QqwrhkRGKJGFR324234k'];
+            $isWindows   = (DIRECTORY_SEPARATOR === '\\');
+            $filePathCmd = $isWindows ? str_replace('/', '\\', $filePath) : $filePath;
+            $tempPathCmd = $isWindows ? str_replace('/', '\\', $tempPath) : $tempPath;
+
+            foreach ($passwords as $pwd) {
+                $cmd = sprintf('"%s" x -p%s "%s" -o"%s" -y', $sevenZip, $pwd, $filePathCmd, $tempPathCmd);
+                exec($cmd, $output, $code);
+                if ($code === 0 && (file_exists($tempPath . '/info.ini') || file_exists($tempPath . '/tables_fields.ini') || file_exists($tempPath . '/binary'))) {
+                    return $tempPath;
+                }
+            }
         }
 
-        return $tempPath;
+        // Fallback jika unencrypted zip dan ZipArchive tersedia di PHP
+        if (class_exists('ZipArchive')) {
+            $zip = new \ZipArchive();
+            if ($zip->open($filePath) === TRUE) {
+                $zip->extractTo($tempPath);
+                $zip->close();
+                return $tempPath;
+            }
+        }
+
+        throw new \RuntimeException("Gagal membuka atau mengekstrak file konsolidasi: {$filePath}");
     }
 
     private function loadIniConfigs(string $path): void
     {
-        $fieldsFile = $path . '/tables_fields.ini';
-        if (file_exists($fieldsFile)) {
-            $this->tablesFields = parse_ini_file($fieldsFile, true);
+        $infoFile = $path . '/info.ini';
+        if (file_exists($infoFile)) {
+            $this->infoConfig = parse_ini_file($infoFile, true) ?: null;
         }
 
-        $infoFile = $path . '/tables_info.ini';
-        if (file_exists($infoFile)) {
-            $this->tablesInfo = parse_ini_file($infoFile, true);
+        $fieldsFile = $path . '/tables_fields.ini';
+        if (file_exists($fieldsFile)) {
+            $this->tablesFields = parse_ini_file($fieldsFile, true) ?: null;
+        }
+
+        $tablesInfoFile = $path . '/tables_info.ini';
+        if (file_exists($tablesInfoFile)) {
+            $this->tablesInfo = parse_ini_file($tablesInfoFile, true) ?: null;
         }
     }
 
@@ -271,6 +354,26 @@ final class KonsolidasiRestoreHandler implements JobHandlerInterface
                 {$setStr}
             ";
             $this->db->query($sqlReplace);
+        }
+
+        // Track ID_PERKARA that needs ekspirasi recalculation
+        if (in_array($tableName, [
+            'remisi', 'sidang_tpp_usulan', 'sidang_tpp_kanwil_usulan', 'sidang_tpp_ditjen_usulan', 
+            'remisi_sk_kanwil', 'remisi_sk_ditjen', 'remisi_sk', 'persetujuan'
+        ])) {
+            $pk = $fieldKey;
+            // Jika ada field ID_PERKARA, ambil dari temp table
+            if (isset($localFields['ID_PERKARA'])) {
+                $query = $this->db->query("SELECT DISTINCT ID_PERKARA FROM `{$tempTableName}` WHERE ID_PERKARA IS NOT NULL AND ID_PERKARA != ''");
+                foreach ($query->getResultArray() as $row) {
+                    $this->perkaraToRecalculate[] = $row['ID_PERKARA'];
+                }
+            } elseif ($tableName === 'perkara') {
+                $query = $this->db->query("SELECT {$pk} AS ID_PERKARA FROM `{$tempTableName}`");
+                foreach ($query->getResultArray() as $row) {
+                    $this->perkaraToRecalculate[] = $row['ID_PERKARA'];
+                }
+            }
         }
 
         $this->db->query("SET FOREIGN_KEY_CHECKS = 1");

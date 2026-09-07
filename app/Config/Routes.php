@@ -26,7 +26,28 @@ $routes->group('api/v1', static function (RouteCollection $routes) {
 
     // Queue API for legacy UPT (Secured via API Key filter / Service Token, not JWT user session)
     $routes->post('konsolidasi/upload', '\App\Modules\Queue\Controllers\QueueController::upload');
+    $routes->get('konsolidasi/waktu',   '\App\Modules\Queue\Controllers\QueueController::waktu');
     $routes->get('queue/status/(:segment)', '\App\Modules\Queue\Controllers\QueueController::status/$1');
+
+    // changescompress: Pusat menyediakan data perubahan ke UPT / Kanwil
+    // GET  → UPT/Kanwil menarik paket perubahan dari Pusat
+    // POST → UPT/Kanwil menandai sudah berhasil di-restore
+    $routes->get('konsolidasi/changes/upt/(:segment)',                         '\App\Modules\Queue\Controllers\KonsolidasiController::changesUpt/$1');
+    $routes->get('konsolidasi/changes/kanwil/(:segment)',                      '\App\Modules\Queue\Controllers\KonsolidasiController::changesKanwil/$1');
+    $routes->post('konsolidasi/changes/upt_readed/(:segment)/(:segment)',      '\App\Modules\Queue\Controllers\KonsolidasiController::uptReaded/$1/$2');
+    $routes->post('konsolidasi/changes/kanwil_readed/(:segment)/(:segment)',   '\App\Modules\Queue\Controllers\KonsolidasiController::kanwilReaded/$1/$2');
+    $routes->post('konsolidasi/changes/upt_readed_clear_temp/(:segment)',      '\App\Modules\Queue\Controllers\KonsolidasiController::uptClearTemp/$1');
+    $routes->post('konsolidasi/changes/kanwil_readed_clear_temp/(:segment)',   '\App\Modules\Queue\Controllers\KonsolidasiController::kanwilClearTemp/$1');
+
+    // Legacy CI2 REST API endpoints mapped to CI4 (Pusat)
+    $routes->group('changescompress', static function (RouteCollection $routes) {
+        $routes->get('upt/(:segment)',                         '\App\Modules\Queue\Controllers\KonsolidasiController::changesUpt/$1');
+        $routes->get('kanwil/(:segment)',                      '\App\Modules\Queue\Controllers\KonsolidasiController::changesKanwil/$1');
+        $routes->post('upt_readed/(:segment)/(:segment)',      '\App\Modules\Queue\Controllers\KonsolidasiController::uptReaded/$1/$2');
+        $routes->post('kanwil_readed/(:segment)/(:segment)',   '\App\Modules\Queue\Controllers\KonsolidasiController::kanwilReaded/$1/$2');
+        $routes->post('upt_readed_clear_temp/(:segment)',      '\App\Modules\Queue\Controllers\KonsolidasiController::uptClearTemp/$1');
+        $routes->post('kanwil_readed_clear_temp/(:segment)',   '\App\Modules\Queue\Controllers\KonsolidasiController::kanwilClearTemp/$1');
+    });
 
     $routes->group('', ['filter' => 'jwt'], static function (RouteCollection $routes) {
         $routes->get('auth/me', '\App\Modules\Auth\Controllers\AuthController::me');

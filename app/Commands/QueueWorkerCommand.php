@@ -20,6 +20,11 @@ class QueueWorkerCommand extends BaseCommand
 
     public function run(array $params)
     {
+        // Set unlimited execution time and memory for background worker
+        ini_set('memory_limit', '-1');
+        set_time_limit(0);
+        ignore_user_abort(true);
+
         $consumer = new QueueConsumer();
         
         $type = $params['type'] ?? CLI::getOption('type');

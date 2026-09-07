@@ -25,20 +25,22 @@ final class QueueRepository
      * @param string|null $scheduledAt
      * @return bool
      */
-    public function insert(string $id, string $type, array $payload, int $maxAttempts = 3, ?string $scheduledAt = null): bool
+    public function insert(string $id, ?string $idUpt, string $type, array $payload, int $priority = 0, int $maxAttempts = 3, ?string $scheduledAt = null): bool
     {
         $data = [
-            'id'           => $id,
-            'type'         => $type,
-            'payload'      => json_encode($payload),
-            'max_attempts' => $maxAttempts,
-            'status'       => 'pending',
-            'version'      => 0,
-            'attempts'     => 0,
+            'ID'           => $id,
+            'ID_UPT'       => $idUpt,
+            'TYPE'         => $type,
+            'PAYLOAD'      => json_encode($payload),
+            'PRIORITY'     => $priority,
+            'MAX_ATTEMPTS' => $maxAttempts,
+            'STATUS'       => 'pending',
+            'VERSION'      => 0,
+            'ATTEMPTS'     => 0,
         ];
 
         if ($scheduledAt !== null) {
-            $data['scheduled_at'] = $scheduledAt;
+            $data['SCHEDULED_AT'] = $scheduledAt;
         }
 
         return $this->db->table('job_queue')->insert($data);
@@ -54,14 +56,15 @@ final class QueueRepository
     public function pollNext(?string $type = null): ?array
     {
         $builder = $this->db->table('job_queue')
-            ->where('status', 'pending')
-            ->where('scheduled_at <=', date('Y-m-d H:i:s'))
-            ->orderBy('scheduled_at', 'ASC')
-            ->orderBy('id', 'ASC')
+            ->where('STATUS', 'pending')
+            ->where(new \CodeIgniter\Database\RawSql('SCHEDULED_AT <= NOW()'))
+            ->orderBy('PRIORITY', 'DESC')
+            ->orderBy('SCHEDULED_AT', 'ASC')
+            ->orderBy('ID', 'ASC')
             ->limit(1);
 
         if ($type !== null) {
-            $builder->where('type', $type);
+            $builder->where('TYPE', $type);
         }
 
         $row = $builder->get()->getRowArray();
@@ -79,14 +82,14 @@ final class QueueRepository
     public function claim(string $id, int $currentVersion): bool
     {
         $this->db->table('job_queue')
-            ->where('id', $id)
-            ->where('version', $currentVersion)
-            ->where('status', 'pending')
+            ->where('ID', $id)
+            ->where('VERSION', $currentVersion)
+            ->where('STATUS', 'pending')
             ->update([
-                'status'    => 'processing',
-                'version'   => $currentVersion + 1,
-                'locked_at' => date('Y-m-d H:i:s'),
-                'attempts'  => new \CodeIgniter\Database\RawSql('attempts + 1'),
+                'STATUS'    => 'processing',
+                'VERSION'   => $currentVersion + 1,
+                'LOCKED_AT' => new \CodeIgniter\Database\RawSql('NOW()'),
+                'ATTEMPTS'  => new \CodeIgniter\Database\RawSql('ATTEMPTS + 1'),
             ]);
 
         // If affected rows is 1, the claim was successful.
@@ -99,10 +102,10 @@ final class QueueRepository
     public function complete(string $id): void
     {
         $this->db->table('job_queue')
-            ->where('id', $id)
+            ->where('ID', $id)
             ->update([
-                'status'       => 'completed',
-                'completed_at' => date('Y-m-d H:i:s'),
+                'STATUS'       => 'completed',
+                'COMPLETED_AT' => new \CodeIgniter\Database\RawSql('NOW()'),
             ]);
     }
 
@@ -114,19 +117,19 @@ final class QueueRepository
         $isFinalFailure = $attempts >= $maxAttempts;
         
         $data = [
-            'status' => $isFinalFailure ? 'failed' : 'pending',
-            'result' => json_encode(['error' => $errorMessage]),
+            'STATUS' => $isFinalFailure ? 'failed' : 'pending',
+            'RESULT' => json_encode(['error' => $errorMessage]),
         ];
 
         // If retrying, delay the next attempt (exponential backoff)
         if (!$isFinalFailure) {
             // Delay: attempts * 30 seconds
             $delaySeconds = $attempts * 30;
-            $data['scheduled_at'] = date('Y-m-d H:i:s', time() + $delaySeconds);
+            $data['SCHEDULED_AT'] = new \CodeIgniter\Database\RawSql("NOW() + INTERVAL {$delaySeconds} SECOND");
         }
 
         $this->db->table('job_queue')
-            ->where('id', $id)
+            ->where('ID', $id)
             ->update($data);
     }
 
@@ -145,8 +148,11 @@ final class QueueRepository
         ]);
 
         $this->db->table('job_queue')
-            ->where('id', $id)
-            ->update(['result' => $progressJson]);
+            ->where('ID', $id)
+            ->update([
+                'RESULT'    => $progressJson,
+                'LOCKED_AT' => new \CodeIgniter\Database\RawSql('NOW()'), // Heartbeat: refresh lock timestamp so long-running jobs are not marked stale
+            ]);
     }
 
     /**
@@ -155,8 +161,8 @@ final class QueueRepository
     public function getJobStatus(string $id): ?array
     {
         $row = $this->db->table('job_queue')
-            ->select('id, type, status, result, created_at')
-            ->where('id', $id)
+            ->select('ID as id, ID_UPT as id_upt, TYPE as type, STATUS as status, RESULT as result, CREATED_AT as created_at')
+            ->where('ID', $id)
             ->get()
             ->getRowArray();
             
@@ -182,14 +188,14 @@ final class QueueRepository
      */
     public function resetStale(int $timeoutMinutes = 30): int
     {
-        $staleThreshold = date('Y-m-d H:i:s', strtotime("-{$timeoutMinutes} minutes"));
+        $staleMinutes = (int) $timeoutMinutes;
 
         $this->db->table('job_queue')
-            ->where('status', 'processing')
-            ->where('locked_at <', $staleThreshold)
+            ->where('STATUS', 'processing')
+            ->where(new \CodeIgniter\Database\RawSql("LOCKED_AT < NOW() - INTERVAL {$staleMinutes} MINUTE"))
             ->update([
-                'status' => 'pending',
-                'result' => json_encode(['error' => 'Job stalled and was automatically reset.'])
+                'STATUS' => 'pending',
+                'RESULT' => json_encode(['error' => 'Job stalled and was automatically reset.'])
             ]);
 
         return $this->db->affectedRows();
@@ -206,8 +212,8 @@ final class QueueRepository
         $cutoffDate = date('Y-m-d H:i:s', strtotime("-{$olderThanDays} days"));
 
         $this->db->table('job_queue')
-            ->where('status', 'completed')
-            ->where('completed_at <', $cutoffDate)
+            ->where('STATUS', 'completed')
+            ->where('COMPLETED_AT <', $cutoffDate)
             ->delete();
 
         return $this->db->affectedRows();

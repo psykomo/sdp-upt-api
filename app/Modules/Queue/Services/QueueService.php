@@ -23,10 +23,10 @@ final class QueueService
      * @param string|null $scheduledAt Optional date string to run the job at a specific time
      * @return string The generated Job ID (UUID v7)
      */
-    public function push(string $type, array $payload, int $maxAttempts = 3, ?string $scheduledAt = null): string
+    public function push(?string $idUpt, string $type, array $payload, int $priority = 0, int $maxAttempts = 3, ?string $scheduledAt = null): string
     {
         $id = UuidV7::generate();
-        $this->repository->insert($id, $type, $payload, $maxAttempts, $scheduledAt);
+        $this->repository->insert($id, $idUpt, $type, $payload, $priority, $maxAttempts, $scheduledAt);
         return $id;
     }
 

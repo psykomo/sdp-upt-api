@@ -27,19 +27,31 @@ final class QueueController extends BaseController
             return ApiResponse::fail("Unauthorized service key.", 401);
         }
 
-        $satkerId = $this->request->getPost('satker_id') ?? 'UNKNOWN';
-        $dataType = $this->request->getPost('data_type') ?? 'data';
+        $satkerId      = $this->request->getPost('satker_id') ?: null;
+        $dataType      = $this->request->getPost('data_type') ?? 'data';
+        $priority      = (int) ($this->request->getPost('priority') ?? 0);
         $fileNameParam = $this->request->getPost('file_name');
+
+        // Check if satkerId exists in upt table for foreign key constraint
+        $idUpt = null;
+        if ($satkerId !== null) {
+            $db = \Config\Database::connect();
+            if ($db->table('upt')->where('ID_UPT', $satkerId)->countAllResults() > 0) {
+                $idUpt = $satkerId;
+            }
+        }
         
         $uploadPath = WRITEPATH . 'uploads/konsolidasi';
         if (!is_dir($uploadPath)) {
             mkdir($uploadPath, 0777, true);
         }
 
+        $filePrefix = ($idUpt ?? $satkerId ?? 'upt') . '_' . date('YmdHis') . '_';
+
         $file = $this->request->getFile('file');
         if ($file && $file->isValid()) {
             // Direct API Upload
-            $newName = $satkerId . '_' . date('YmdHis') . '_' . $file->getRandomName();
+            $newName = $filePrefix . $file->getRandomName();
             $file->move($uploadPath, $newName);
             $savedPath = $uploadPath . '/' . $newName;
             $originalName = $file->getClientName();
@@ -48,33 +60,36 @@ final class QueueController extends BaseController
             // Asumsi file diunggah via FTP ke direktori kerja SDP Pusat atau direktori FTP UPT
             // (Dalam dev environment, biasanya di root direktori htdocs/sdp_pusat atau serupa, kita mock mencari file tersebut)
             // Gunakan path tunggal yang pasti untuk FTP upload, disamakan dengan direktori temporary/konsolidasi sdp_pusat
-            $ftpDropDir = realpath(env('FTP_UPLOAD_PATH') ?? '');
+            $rawFtpPath = trim(env('FTP_UPLOAD_PATH') ?? '', " \t\n\r\0\x0B\"'");
+            $ftpDropDir = realpath($rawFtpPath);
             if (!$ftpDropDir || !is_dir($ftpDropDir)) {
                 return ApiResponse::fail("Direktori FTP_UPLOAD_PATH tidak valid atau tidak ditemukan.", 500);
             }
-            $foundFtpPath = $ftpDropDir . DIRECTORY_SEPARATOR . $fileNameParam;
+            
+            // Pastikan aman untuk Windows dan Linux (hindari traversal dan normalisasi slash)
+            $cleanFileName = basename(str_replace('\\', '/', $fileNameParam));
+            $foundFtpPath = rtrim($ftpDropDir, '/\\') . DIRECTORY_SEPARATOR . $cleanFileName;
 
             if (!file_exists($foundFtpPath)) {
-                return ApiResponse::fail("File FTP tidak ditemukan: {$fileNameParam}", 404);
+                return ApiResponse::fail("File FTP tidak ditemukan: {$cleanFileName}", 404);
             }
 
-            $newName = $satkerId . '_' . date('YmdHis') . '_' . $fileNameParam;
+            $newName = $filePrefix . $cleanFileName;
             copy($foundFtpPath, $uploadPath . '/' . $newName);
             $savedPath = $uploadPath . '/' . $newName;
-            $originalName = $fileNameParam;
+            $originalName = $cleanFileName;
         } else {
             return ApiResponse::fail("No valid file uploaded or file_name provided.", 400);
         }
 
         // Push to queue
         $payload = [
-            'file_path' => $savedPath,
-            'satker_id' => $satkerId,
-            'data_type' => $dataType,
-            'original_name' => $file->getClientName()
+            'file_path'     => $savedPath,
+            'satker_id'     => $satkerId,
+            'data_type'     => $dataType,
+            'original_name' => $originalName
         ];
-        
-        $jobId = $this->service()->push('konsolidasi', $payload);
+        $jobId = $this->service()->push($idUpt, 'konsolidasi', $payload, $priority);
 
         return ApiResponse::ok([
             'message' => 'File received and queued successfully.',
@@ -94,5 +109,51 @@ final class QueueController extends BaseController
         }
         
         return ApiResponse::ok($status);
+    }
+
+    /**
+     * GET /api/v1/konsolidasi/waktu
+     *
+     * Mengembalikan waktu server CI4 Pusat saat ini.
+     * Digunakan oleh UPT untuk sinkronisasi / validasi selisih waktu
+     * sebelum melakukan konsolidasi.
+     *
+     * Respons kompatibel dengan format legacy CI2 (status + message):
+     *   { "status": true, "server_time": "2026-09-07 17:35:00", "message": "" }
+     *
+     * Status false jika UPT mengirimkan waktu yang lebih dari THRESHOLD menit
+     * lebih awal/akhir dari server Pusat (kemungkinan jam server UPT dimundurkan).
+     */
+    public function waktu(): ResponseInterface
+    {
+        $authHeader = $this->request->getHeaderLine('X-SDP-Service-Key');
+        if (empty($authHeader) && env('CI_ENVIRONMENT') !== 'development') {
+            return ApiResponse::fail("Unauthorized service key.", 401);
+        }
+
+        $serverTimestamp = time();
+        $serverTime      = date('Y-m-d H:i:s', $serverTimestamp);
+
+        $tsClient = $this->request->getGet('ts_client');
+        $message  = '';
+        $status   = true;
+
+        if (!empty($tsClient) && is_numeric($tsClient)) {
+            // Bandingkan Unix timestamp langsung — bebas dari masalah timezone
+            $diff = abs($serverTimestamp - (int) $tsClient);
+
+            // Toleransi selisih waktu maksimum: 10 menit
+            $thresholdSeconds = 10 * 60;
+            if ($diff > $thresholdSeconds) {
+                $status  = false;
+                $message = ' Selisih waktu UPT dengan Pusat: ' . round($diff / 60, 1) . ' menit. Toleransi maksimal 10 menit.';
+            }
+        }
+
+        return $this->response->setStatusCode(200)->setJSON([
+            'status'      => $status,
+            'server_time' => $serverTime,
+            'message'     => $message,
+        ]);
     }
 }
