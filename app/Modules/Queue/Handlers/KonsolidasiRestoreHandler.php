@@ -9,6 +9,9 @@ use CodeIgniter\Database\BaseConnection;
 use Config\Database;
 use Exception;
 
+use App\Modules\Queue\Services\BinlogExecutorService;
+use App\Modules\Queue\Services\ReplicaExporterService;
+
 final class KonsolidasiRestoreHandler implements JobHandlerInterface
 {
     private QueueRepository $repository;
@@ -21,11 +24,13 @@ final class KonsolidasiRestoreHandler implements JobHandlerInterface
 
     // Track perkara for ekspirasi recalculation
     private array $perkaraToRecalculate = [];
+    private BinlogExecutorService $binlogExecutor;
 
     public function __construct()
     {
         $this->repository = new QueueRepository();
         $this->db = Database::connect(); // Using shared_database
+        $this->binlogExecutor = new BinlogExecutorService($this->db);
     }
 
     public function handle(array $payload, string $jobId): void
@@ -43,39 +48,86 @@ final class KonsolidasiRestoreHandler implements JobHandlerInterface
 
         $this->repository->updateProgress($jobId, 5, 'Mengekstrak file ZIP...');
         $restoreTempPath = $this->extractZip($filePath);
+        $intermediateCsvPath = null;
+        $isBinlog = false;
 
         try {
-            $this->repository->updateProgress($jobId, 10, 'Membaca konfigurasi tabel...');
+            $this->repository->updateProgress($jobId, 10, 'Membaca konfigurasi paket konsolidasi...');
             
             // Parse info.ini and tables_fields.ini
             $this->loadIniConfigs($restoreTempPath);
 
+            $sourceCsvPath = $restoreTempPath;
+
             if (empty($this->tablesFields)) {
                 $format = $this->infoConfig['general']['format'] ?? '';
                 if ($format === 'bin-log' || $format === 'sql') {
-                    $this->repository->updateProgress($jobId, 100, 'File binlog/sql diterima dan diverifikasi.');
-                    return;
+                    $isBinlog = true;
+
+                    // 1. TAHAP REPLAY BINLOG (10% - 30%)
+                    $files = $this->infoConfig['files'] ?? [];
+                    $clientDb = $this->infoConfig['general']['database_name'] ?? 'db_sdp';
+                    $timePoint = $this->infoConfig['general']['time_point'] ?? date('Y-m-d H:i:s');
+                    $method = $this->infoConfig['general']['method'] ?? 'partial';
+                    $isFull = ($method === 'full');
+                    $isRetry = (bool) ($payload['is_retry'] ?? false);
+
+                    // Validasi urutan sequence
+                    $this->binlogExecutor->validateSequence($satkerId, $files, $isRetry, $isFull);
+
+                    // Replay binlog ke db{satkerId}
+                    $this->binlogExecutor->replay(
+                        $restoreTempPath,
+                        $satkerId,
+                        $files,
+                        $format,
+                        $clientDb,
+                        $timePoint,
+                        function (string $msg, int $pct) use ($jobId) {
+                            $this->repository->updateProgress($jobId, $pct, $msg);
+                        }
+                    );
+
+                    // 2. TAHAP EKSPOR REPLICA KE CSV INTERMEDIATE (30% - 60%)
+                    $intermediateCsvPath = WRITEPATH . 'temp/intermediate_csv_' . uniqid();
+                    $replicaExporter = new ReplicaExporterService($this->db);
+                    $replicaExporter->export(
+                        $satkerId,
+                        $intermediateCsvPath,
+                        function (string $msg, int $pct) use ($jobId) {
+                            $this->repository->updateProgress($jobId, $pct, $msg);
+                        }
+                    );
+
+                    // Muat konfigurasi hasil ekspor CSV
+                    $this->loadIniConfigs($intermediateCsvPath);
+                    $sourceCsvPath = $intermediateCsvPath;
+                } else {
+                    throw new \RuntimeException("Konfigurasi tables_fields.ini tidak ditemukan atau kosong.");
                 }
-                throw new \RuntimeException("Konfigurasi tables_fields.ini tidak ditemukan atau kosong.");
             }
 
             // Determine if sender is UPT or Kanwil
             $isFromUpt = $this->isFromUpt($satkerId);
 
-            $tables = array_keys($this->tablesFields);
+            $tables = array_keys($this->tablesFields ?? []);
             $total = count($tables);
 
+            // 3. TAHAP IMPORT KE DATABASE PUSAT (60% - 90% jika binlog, 15% - 95% jika CSV)
+            $basePct = $isBinlog ? 60 : 15;
+            $rangePct = $isBinlog ? 30 : 80;
+
             foreach ($tables as $index => $tableName) {
-                $pct = 15 + (int) ((($index + 1) / $total) * 80);
-                $this->repository->updateProgress($jobId, $pct, "Memproses tabel: {$tableName}...");
+                $pct = $basePct + (int) ((($index + 1) / ($total ?: 1)) * $rangePct);
+                $this->repository->updateProgress($jobId, $pct, "Mengimpor tabel {$tableName} ke database pusat...");
 
                 $csvFileName = "{$tableName}.csv";
-                $this->restoreFileToTable($restoreTempPath, $csvFileName, $tableName, $dataType, $satkerId, $isFromUpt);
+                $this->restoreFileToTable($sourceCsvPath, $csvFileName, $tableName, $dataType, $satkerId, $isFromUpt);
             }
 
             // TODO: Integrasi remisi (update status persetujuan, dll) kalau perlu
 
-            // Post-import side effects: Recalculate Ekspirasi
+            // 4. Post-import side effects: Recalculate Ekspirasi (90% - 100%)
             if (!empty($this->perkaraToRecalculate)) {
                 $uniquePerkara = array_unique($this->perkaraToRecalculate);
                 $totalPerkara = count($uniquePerkara);
@@ -105,9 +157,15 @@ final class KonsolidasiRestoreHandler implements JobHandlerInterface
                 }
             }
 
-            $this->repository->updateProgress($jobId, 100, 'Konsolidasi selesai.');
+            $successMessage = $isBinlog
+                ? 'Konsolidasi binlog selesai dan berhasil diintegrasikan ke database pusat.'
+                : 'Konsolidasi selesai.';
+            $this->repository->updateProgress($jobId, 100, $successMessage);
         } finally {
             $this->cleanupTemp($restoreTempPath);
+            if ($intermediateCsvPath !== null) {
+                $this->cleanupTemp($intermediateCsvPath);
+            }
         }
     }
 
@@ -229,7 +287,9 @@ final class KonsolidasiRestoreHandler implements JobHandlerInterface
         }
 
         // 2. Access Control Validation (Pusat Only rules)
-        $this->validateAccessControl($tableName, $isFromUpt);
+        if (!$this->validateAccessControl($tableName, $isFromUpt)) {
+            return;
+        }
 
         // 3. Database import preparation
         $tableInfo = $this->tablesInfo[$tableName] ?? [];
@@ -257,130 +317,121 @@ final class KonsolidasiRestoreHandler implements JobHandlerInterface
         $fieldsStr = implode(",", $fieldsMap);
 
         // 4. Temporary Table Creation
-        $tempTableName = "tmp_{$tableName}_" . bin2hex(random_bytes(4));
-        $this->db->query("DROP TEMPORARY TABLE IF EXISTS `{$tempTableName}`");
-        
-        // Buat tabel temporary persis seperti tabel asli (untuk kemudahan)
-        $this->db->query("CREATE TEMPORARY TABLE `{$tempTableName}` LIKE `{$tableName}`");
+        $tempTableName = "_tmp_{$tableName}_" . bin2hex(random_bytes(4));
+        $this->db->query("DROP TABLE IF EXISTS `{$tempTableName}`");
+        $this->db->query("CREATE TABLE `{$tempTableName}` LIKE `{$tableName}`");
 
-        // 5. LOAD DATA LOCAL INFILE ke Temporary Table
-        $escapedPath = str_replace('\\', '/', $csvFileAddress);
-        $sqlLoadTemp = "
-            LOAD DATA LOCAL INFILE '{$escapedPath}'
-            INTO TABLE `{$tempTableName}`
-            FIELDS TERMINATED BY ','
-            ENCLOSED BY '\"'
-            LINES TERMINATED BY '\r\n'
-            ({$fieldsStr})
-        ";
-        $this->db->query($sqlLoadTemp);
-
-        // 6. Validasi Data Khusus (Pusat Only)
-        $isValidated = false;
-
-        if ($tableName === 'integrasi' || $tableName === 'integrasi_pidana' || $tableName === 'integrasi_remisi') {
-            // Blokir data yang sudah diedit Ditjen/Kanwil
-            $whereEdit = "inte.IS_DITJEN_EDIT = 1";
-            if ($isFromUpt) {
-                $whereEdit .= " OR inte.IS_KANWIL_EDIT = 1";
-            }
-            
-            $integField = $tableName === 'integrasi' ? 'ID_INTEGRASI' : ($tableName === 'integrasi_pidana' ? 'ID_INTEGRASI_PIDANA' : 'ID_INTEGRASI_REMISI'); // Sederhananya pakai field_key
-
-            $sqlBlockInteg = "
-                DELETE tmp FROM `{$tempTableName}` tmp
-                INNER JOIN `integrasi` inte ON inte.{$integField} = tmp.{$fieldKey}
-                WHERE {$whereEdit}
-            ";
-            $this->db->query($sqlBlockInteg);
-            $isValidated = true;
-        }
-
-        if ($tableName === 'perkara') {
-            // Blokir perkara mutasi (STTA) yang ID_UPT nya beda
-            $sqlBlockPerkara = "
-                DELETE tmp FROM `{$tempTableName}` tmp
-                INNER JOIN `perkara` perk ON perk.{$fieldKey} = tmp.{$fieldKey}
-                WHERE tmp.ID_STATUS = 'STTA' AND tmp.ID_UPT <> perk.ID_UPT
-            ";
-            $this->db->query($sqlBlockPerkara);
-            $isValidated = true;
-        }
-
-        // 7. Insert Data ke Tabel Utama
-        $this->db->query("SET FOREIGN_KEY_CHECKS = 0");
-
-        if (in_array($tableName, ['integrasi_sidang_ditjen_hasil', 'integrasi', 'sidang_tpp_usulan'])) {
-            // Mode UPDATE spesifik kolom (INSERT ON DUPLICATE KEY UPDATE)
-            $updateFields = [];
-            foreach ($remoteFields as $fieldName) {
-                if ($fieldName === $fieldKey || $fieldName === 'KONSOLIDASI' || !isset($localFields[$fieldName])) continue;
-                $updateFields[] = "`{$fieldName}` = VALUES(`{$fieldName}`)";
-            }
-            $updateFields[] = "`KONSOLIDASI` = 2";
-            
-            $updateStr = implode(", ", $updateFields);
-            $sqlInsert = "
-                INSERT INTO `{$tableName}`
-                SELECT * FROM `{$tempTableName}`
-                ON DUPLICATE KEY UPDATE {$updateStr}
-            ";
-            $this->db->query($sqlInsert);
-
-        } else {
-            // Mode REPLACE INTO (Natural Tables)
-            // Pre-delete handlers
-            if ($tableName === 'mutasi_upt_detail' || $tableName === 'sidik_jari') {
-                $this->db->query("DELETE tgt FROM `{$tableName}` tgt INNER JOIN `{$tempTableName}` tmp ON tgt.{$fieldKey} = tmp.{$fieldKey}");
-            }
-            if (strpos($tableName, 'daf_') === 0) { // daf tables
-                $this->db->query("DELETE tgt FROM `{$tableName}` tgt INNER JOIN `{$tempTableName}` tmp ON tgt.ID_UPT = tmp.ID_UPT AND tgt.TAHUN = tmp.TAHUN AND tgt.BULAN = tmp.BULAN");
-            }
-
-            // Actual Replace
-            $setFlags = [];
-            if (isset($localFields['KONSOLIDASI'])) $setFlags[] = "`KONSOLIDASI` = 2";
-            if (isset($localFields['KONSOLIDASI_IMAGE'])) $setFlags[] = "`KONSOLIDASI_IMAGE` = 2";
-            
-            $setStr = count($setFlags) > 0 ? "SET " . implode(", ", $setFlags) : "";
-
-            $sqlReplace = "
+        try {
+            // 5. LOAD DATA LOCAL INFILE ke Temporary Table via mysql CLI
+            $escapedPath = str_replace('\\', '/', $csvFileAddress);
+            $sqlLoadTemp = "
                 LOAD DATA LOCAL INFILE '{$escapedPath}'
-                REPLACE INTO TABLE `{$tableName}`
+                INTO TABLE `{$tempTableName}`
                 FIELDS TERMINATED BY ','
                 ENCLOSED BY '\"'
-                LINES TERMINATED BY '\r\n'
-                ({$fieldsStr})
-                {$setStr}
+                LINES TERMINATED BY '\\r\\n'
+                ({$fieldsStr});
             ";
-            $this->db->query($sqlReplace);
-        }
+            $this->executeSqlViaCli($sqlLoadTemp);
 
-        // Track ID_PERKARA that needs ekspirasi recalculation
-        if (in_array($tableName, [
-            'remisi', 'sidang_tpp_usulan', 'sidang_tpp_kanwil_usulan', 'sidang_tpp_ditjen_usulan', 
-            'remisi_sk_kanwil', 'remisi_sk_ditjen', 'remisi_sk', 'persetujuan'
-        ])) {
-            $pk = $fieldKey;
-            // Jika ada field ID_PERKARA, ambil dari temp table
-            if (isset($localFields['ID_PERKARA'])) {
-                $query = $this->db->query("SELECT DISTINCT ID_PERKARA FROM `{$tempTableName}` WHERE ID_PERKARA IS NOT NULL AND ID_PERKARA != ''");
-                foreach ($query->getResultArray() as $row) {
-                    $this->perkaraToRecalculate[] = $row['ID_PERKARA'];
+            // 6. Validasi Data Khusus (Pusat Only)
+            $isValidated = false;
+
+            if ($tableName === 'integrasi' || $tableName === 'integrasi_pidana' || $tableName === 'integrasi_remisi') {
+                // Blokir data yang sudah diedit Ditjen/Kanwil
+                $whereEdit = "(inte.IS_DITJEN_EDIT = 1";
+                if ($isFromUpt) {
+                    $whereEdit .= " OR inte.IS_KANWIL_EDIT = 1";
                 }
-            } elseif ($tableName === 'perkara') {
-                $query = $this->db->query("SELECT {$pk} AS ID_PERKARA FROM `{$tempTableName}`");
-                foreach ($query->getResultArray() as $row) {
-                    $this->perkaraToRecalculate[] = $row['ID_PERKARA'];
+                $whereEdit .= ")";
+
+                $sqlBlockInteg = "
+                    DELETE tmp FROM `{$tempTableName}` tmp
+                    INNER JOIN `integrasi` inte ON inte.ID_INTEGRASI = tmp.ID_INTEGRASI
+                    WHERE {$whereEdit}
+                ";
+                $this->db->query($sqlBlockInteg);
+                $isValidated = true;
+            }
+
+            if ($tableName === 'perkara') {
+                // Blokir perkara mutasi (STTA) yang ID_UPT nya beda
+                $sqlBlockPerkara = "
+                    DELETE tmp FROM `{$tempTableName}` tmp
+                    INNER JOIN `perkara` perk ON perk.{$fieldKey} = tmp.{$fieldKey}
+                    WHERE tmp.ID_STATUS = 'STTA' AND tmp.ID_UPT <> perk.ID_UPT
+                ";
+                $this->db->query($sqlBlockPerkara);
+                $isValidated = true;
+            }
+
+            // 7. Insert Data ke Tabel Utama
+            $this->db->query("SET FOREIGN_KEY_CHECKS = 0");
+
+            if (in_array($tableName, ['integrasi_sidang_ditjen_hasil', 'integrasi', 'sidang_tpp_usulan'])) {
+                // Mode UPDATE spesifik kolom (INSERT ON DUPLICATE KEY UPDATE)
+                $updateFields = [];
+                foreach ($remoteFields as $fieldName) {
+                    if ($fieldName === $fieldKey || $fieldName === 'KONSOLIDASI' || !isset($localFields[$fieldName])) continue;
+                    $updateFields[] = "`{$fieldName}` = VALUES(`{$fieldName}`)";
+                }
+                $updateFields[] = "`KONSOLIDASI` = 2";
+                
+                $updateStr = implode(", ", $updateFields);
+                $sqlInsert = "
+                    INSERT INTO `{$tableName}`
+                    SELECT * FROM `{$tempTableName}`
+                    ON DUPLICATE KEY UPDATE {$updateStr}
+                ";
+                $this->db->query($sqlInsert);
+
+            } else {
+                // Mode REPLACE INTO (Natural Tables)
+                // Pre-delete handlers
+                if ($tableName === 'mutasi_upt_detail' || $tableName === 'sidik_jari') {
+                    $this->db->query("DELETE tgt FROM `{$tableName}` tgt INNER JOIN `{$tempTableName}` tmp ON tgt.{$fieldKey} = tmp.{$fieldKey}");
+                }
+                if (strpos($tableName, 'daf_') === 0) { // daf tables
+                    $this->db->query("DELETE tgt FROM `{$tableName}` tgt INNER JOIN `{$tempTableName}` tmp ON tgt.ID_UPT = tmp.ID_UPT AND tgt.TAHUN = tmp.TAHUN AND tgt.BULAN = tmp.BULAN");
+                }
+
+                if (isset($localFields['KONSOLIDASI'])) {
+                    $this->db->query("UPDATE `{$tempTableName}` SET `KONSOLIDASI` = 2");
+                }
+                if (isset($localFields['KONSOLIDASI_IMAGE'])) {
+                    $this->db->query("UPDATE `{$tempTableName}` SET `KONSOLIDASI_IMAGE` = 2");
+                }
+
+                $this->db->query("REPLACE INTO `{$tableName}` SELECT * FROM `{$tempTableName}`");
+            }
+
+            // Track ID_PERKARA that needs ekspirasi recalculation
+            if (in_array($tableName, [
+                'remisi', 'sidang_tpp_usulan', 'sidang_tpp_kanwil_usulan', 'sidang_tpp_ditjen_usulan', 
+                'remisi_sk_kanwil', 'remisi_sk_ditjen', 'remisi_sk', 'persetujuan'
+            ])) {
+                $pk = $fieldKey;
+                // Jika ada field ID_PERKARA, ambil dari temp table
+                if (isset($localFields['ID_PERKARA'])) {
+                    $query = $this->db->query("SELECT DISTINCT ID_PERKARA FROM `{$tempTableName}` WHERE ID_PERKARA IS NOT NULL AND ID_PERKARA != ''");
+                    foreach ($query->getResultArray() as $row) {
+                        $this->perkaraToRecalculate[] = $row['ID_PERKARA'];
+                    }
+                } elseif ($tableName === 'perkara') {
+                    $query = $this->db->query("SELECT {$pk} AS ID_PERKARA FROM `{$tempTableName}`");
+                    foreach ($query->getResultArray() as $row) {
+                        $this->perkaraToRecalculate[] = $row['ID_PERKARA'];
+                    }
                 }
             }
-        }
 
-        $this->db->query("SET FOREIGN_KEY_CHECKS = 1");
-        $this->db->query("DROP TEMPORARY TABLE IF EXISTS `{$tempTableName}`");
+            $this->db->query("SET FOREIGN_KEY_CHECKS = 1");
+        } finally {
+            $this->db->query("DROP TABLE IF EXISTS `{$tempTableName}`");
+        }
     }
 
-    private function validateAccessControl(string $tableName, bool $isFromUpt): void
+    private function validateAccessControl(string $tableName, bool $isFromUpt): bool
     {
         // Rule: Milik Ditjen, tidak boleh dari UPT maupun Kanwil
         if (in_array($tableName, [
@@ -388,7 +439,8 @@ final class KonsolidasiRestoreHandler implements JobHandlerInterface
             'sidang_tpp_ditjen', 'sidang_tpp_ditjen_usulan', 'remisi_sk_ditjen', 'persetujuan', 'persetujuan_detail',
             'verifikasi', 'verifikasi_history'
         ])) {
-            throw new \RuntimeException("Data [{$tableName}] milik pusat tidak dapat diakses.");
+            log_message('info', "Data [{$tableName}] milik pusat tidak dapat diakses, dilewati.");
+            return false;
         }
 
         if ($isFromUpt) {
@@ -397,21 +449,26 @@ final class KonsolidasiRestoreHandler implements JobHandlerInterface
                 'integrasi_sidang_kanwil', 'integrasi_sidang_kanwil_hasil', 'integrasi_sk_kanwil', 'integrasi_penetapan_persetujuan_kanwil',
                 'sidang_tpp_kanwil', 'sidang_tpp_kanwil_usulan', 'remisi_sk_kanwil', 'remisi_otorisasi_sk'
             ])) {
-                throw new \RuntimeException("Data [{$tableName}] milik kanwil tidak dapat diakses oleh UPT.");
+                log_message('info', "Data [{$tableName}] milik kanwil tidak dapat diakses oleh UPT, dilewati.");
+                return false;
             }
         } else {
             // Rule: Milik UPT, tidak boleh dari Kanwil
             if (in_array($tableName, [
                 'integrasi_sidang_upt', 'integrasi_sidang_upt_hasil', 'sidang_tpp_upt', 'sidang_tpp_upt_usulan'
             ])) {
-                throw new \RuntimeException("Data [{$tableName}] milik UPT tidak dapat diakses oleh Kanwil.");
+                log_message('info', "Data [{$tableName}] milik UPT tidak dapat diakses oleh Kanwil, dilewati.");
+                return false;
             }
             
             // Allowlist untuk Kanwil: hanya integrasi, sidangtpp, dan dokumen
             if (strpos($tableName, 'integrasi') !== 0 && strpos($tableName, 'sidang_tpp') !== 0 && strpos($tableName, 'dokumen') !== 0) {
-                throw new \RuntimeException("Data [{$tableName}] bukan bagian dari integrasi/sidang tpp tidak dapat diakses oleh Kanwil.");
+                log_message('info', "Data [{$tableName}] bukan bagian dari integrasi/sidang tpp tidak dapat diakses oleh Kanwil, dilewati.");
+                return false;
             }
         }
+
+        return true;
     }
 
     private function copyDirectory(string $source, string $dest): void
@@ -449,5 +506,60 @@ final class KonsolidasiRestoreHandler implements JobHandlerInterface
             (is_dir("$dir/$file")) ? $this->deleteDirectory("$dir/$file") : unlink("$dir/$file");
         }
         rmdir($dir);
+    }
+
+    /**
+     * Eksekusi perintah SQL secara langsung via CLI MySQL client.
+     * Digunakan untuk operasi yang membutuhkan LOAD DATA LOCAL INFILE tanpa terhalang setting driver PHP.
+     */
+    private function executeSqlViaCli(string $sql): void
+    {
+        $mysqlBin = $this->binlogExecutor->getBinaryPath('mysql');
+        $dbConfig = config('Database')->default;
+
+        $host     = $dbConfig['hostname'] ?? '127.0.0.1';
+        $port     = (int) ($dbConfig['port'] ?? 3306);
+        $user     = $dbConfig['username'] ?? 'root';
+        $pass     = $dbConfig['password'] ?? '';
+        $database = $dbConfig['database'] ?? 'db_sdp_pusat';
+
+        $isWindows = (DIRECTORY_SEPARATOR === '\\');
+        $tempDir = WRITEPATH . 'temp';
+        if (!is_dir($tempDir)) {
+            mkdir($tempDir, 0777, true);
+        }
+
+        $tempSqlFile = $tempDir . DIRECTORY_SEPARATOR . 'cli_' . bin2hex(random_bytes(6)) . '.sql';
+        file_put_contents($tempSqlFile, $sql);
+
+        $connArgs = sprintf('--host="%s" --port=%d --user="%s"', $host, $port, $user);
+        if ($pass !== '') {
+            $connArgs .= sprintf(' --password="%s"', addcslashes($pass, '"\\'));
+        }
+
+        $tempSqlPathCmd = $isWindows ? str_replace('/', '\\', $tempSqlFile) : $tempSqlFile;
+        $errorLog       = $tempDir . DIRECTORY_SEPARATOR . 'cli_err_' . bin2hex(random_bytes(6)) . '.log';
+        $errorLogCmd    = $isWindows ? str_replace('/', '\\', $errorLog) : $errorLog;
+
+        $cmd = sprintf(
+            '"%s" --local-infile %s %s < "%s" 2> "%s"',
+            $mysqlBin,
+            $connArgs,
+            $database,
+            $tempSqlPathCmd,
+            $errorLogCmd
+        );
+
+        exec($cmd, $output, $code);
+
+        @unlink($tempSqlFile);
+        $errContent = file_exists($errorLog) ? file_get_contents($errorLog) : '';
+        @unlink($errorLog);
+
+        $errClean = trim(preg_replace('/^.*?\[Warning\] Using a password on the command line interface can be insecure\..*?$/m', '', $errContent));
+
+        if ($code !== 0 && !empty($errClean)) {
+            throw new \RuntimeException("Gagal eksekusi SQL CLI: " . $errClean);
+        }
     }
 }

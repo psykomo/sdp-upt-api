@@ -28,6 +28,7 @@ $routes->group('api/v1', static function (RouteCollection $routes) {
     $routes->post('konsolidasi/upload', '\App\Modules\Queue\Controllers\QueueController::upload');
     $routes->get('konsolidasi/waktu',   '\App\Modules\Queue\Controllers\QueueController::waktu');
     $routes->get('queue/status/(:segment)', '\App\Modules\Queue\Controllers\QueueController::status/$1');
+    $routes->post('queue/status',           '\App\Modules\Queue\Controllers\QueueController::bulkStatus');
 
     // changescompress: Pusat menyediakan data perubahan ke UPT / Kanwil
     // GET  → UPT/Kanwil menarik paket perubahan dari Pusat

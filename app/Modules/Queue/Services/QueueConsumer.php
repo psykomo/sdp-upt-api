@@ -87,8 +87,8 @@ final class QueueConsumer
      */
     private function resolveHandler(string $type): ?JobHandlerInterface
     {
-        return match ($type) {
-            'konsolidasi' => new KonsolidasiRestoreHandler(),
+        return match (strtolower($type)) {
+            'konsolidasi', 'data', 'dokumen', 'image', 'foto', 'sidik_jari', 'daf' => new KonsolidasiRestoreHandler(),
             // add more handlers here
             default => null,
         };

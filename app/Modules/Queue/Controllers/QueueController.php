@@ -82,14 +82,15 @@ final class QueueController extends BaseController
             return ApiResponse::fail("No valid file uploaded or file_name provided.", 400);
         }
 
-        // Push to queue
+        // Push to queue with specific data type (data, dokumen, image, sidik_jari, daf)
+        $jobType = !empty($dataType) ? strtolower($dataType) : 'data';
         $payload = [
             'file_path'     => $savedPath,
             'satker_id'     => $satkerId,
-            'data_type'     => $dataType,
+            'data_type'     => $jobType,
             'original_name' => $originalName
         ];
-        $jobId = $this->service()->push($idUpt, 'konsolidasi', $payload, $priority);
+        $jobId = $this->service()->push($idUpt, $jobType, $payload, $priority);
 
         return ApiResponse::ok([
             'message' => 'File received and queued successfully.',
@@ -109,6 +110,44 @@ final class QueueController extends BaseController
         }
         
         return ApiResponse::ok($status);
+    }
+
+    /**
+     * POST /api/v1/queue/status
+     * Bulk status check for multiple jobs.
+     * Body: { "job_ids": ["uuid1", "uuid2", ...] }
+     *
+     * Returns formatted queue numbers and global processing position.
+     */
+    public function bulkStatus(): ResponseInterface
+    {
+        $input = null;
+        try {
+            $input = $this->request->getJSON(true);
+        } catch (\Throwable $e) {
+            $input = null;
+        }
+
+        $jobIds = $input['job_ids'] ?? $this->request->getPost('job_ids') ?? [];
+        if (is_string($jobIds)) {
+            $decoded = json_decode($jobIds, true);
+            if (is_array($decoded)) {
+                $jobIds = $decoded;
+            } else {
+                $jobIds = array_filter(array_map('trim', explode(',', $jobIds)));
+            }
+        }
+
+        if (!is_array($jobIds) || empty($jobIds)) {
+            return ApiResponse::fail("Parameter job_ids (array) diperlukan.", 400);
+        }
+
+        // Cap at 50 to prevent abuse
+        $jobIds = array_slice($jobIds, 0, 50);
+
+        $result = $this->service()->bulkStatus($jobIds);
+
+        return ApiResponse::ok($result);
     }
 
     /**
