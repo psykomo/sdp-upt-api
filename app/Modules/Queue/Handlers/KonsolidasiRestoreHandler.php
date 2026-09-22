@@ -72,10 +72,12 @@ final class KonsolidasiRestoreHandler implements JobHandlerInterface
                     $isFull = ($method === 'full');
                     $isRetry = (bool) ($payload['is_retry'] ?? false);
 
-                    // Validasi urutan sequence
-                    $this->binlogExecutor->validateSequence($satkerId, $files, $isRetry, $isFull);
+                    $backupNumber = isset($this->infoConfig['general']['backup_number']) ? (int) $this->infoConfig['general']['backup_number'] : null;
 
-                    // Replay binlog ke db{satkerId}
+                    // Validasi urutan sequence (menggunakan nomor paket backup_number jika tersedia)
+                    $this->binlogExecutor->validateSequence($satkerId, $files, $isRetry, $isFull, $backupNumber);
+
+                    // Replay binlog ke db{satkerId} dan catat INCREAMENT_BACKUP_NUMBER paket
                     $this->binlogExecutor->replay(
                         $restoreTempPath,
                         $satkerId,
@@ -85,7 +87,8 @@ final class KonsolidasiRestoreHandler implements JobHandlerInterface
                         $timePoint,
                         function (string $msg, int $pct) use ($jobId) {
                             $this->repository->updateProgress($jobId, $pct, $msg);
-                        }
+                        },
+                        $backupNumber
                     );
 
                     // 2. TAHAP EKSPOR REPLICA KE CSV INTERMEDIATE (30% - 60%)

@@ -37,21 +37,6 @@ class BinlogExecutorService
             return realpath($configured) ?: $configured;
         }
 
-        // Fallback lokasi standar jika ada
-        $candidates = [
-            'D:/_development/database/mysql/bin',
-            'C:/xampp/mysql/bin',
-            'C:/laragon/bin/mysql/current/bin',
-            '/usr/bin',
-            '/usr/local/bin',
-        ];
-
-        foreach ($candidates as $cand) {
-            if (is_dir($cand)) {
-                return realpath($cand) ?: $cand;
-            }
-        }
-
         return '';
     }
 
@@ -102,38 +87,33 @@ class BinlogExecutorService
      * @param  array  $files
      * @param  bool   $isRetry
      * @param  bool   $isFull
+    /**
+     * Validasi nomor sequence paket konsolidasi / binlog terhadap INCREAMENT_BACKUP_NUMBER di tabel UPT.
+     * Menggunakan backup_number (nomor paket konsolidasi) jika tersedia, fallback ke nomor file binlog.
+     *
+     * @param  string   $satkerId
+     * @param  array    $files
+     * @param  bool     $isRetry
+     * @param  bool     $isFull
+     * @param  int|null $packageBackupNumber Nomor urut paket konsolidasi dari info.ini
      * @return array{first: int, last: int}
      */
-    public function validateSequence(string $satkerId, array $files, bool $isRetry = false, bool $isFull = false): array
-    {
+    public function validateSequence(
+        string $satkerId,
+        array $files,
+        bool $isRetry = false,
+        bool $isFull = false,
+        ?int $packageBackupNumber = null
+    ): array {
         natsort($files);
         $files = array_values($files);
 
-        $firstFile   = reset($files);
-        $lastFile    = end($files);
+        $firstFile   = reset($files) ?: '';
+        $lastFile    = end($files) ?: '';
         $firstNumber = $this->extractSequenceNumber($firstFile);
         $lastNumber  = $this->extractSequenceNumber($lastFile);
 
-        $uptRow = $this->db->table('upt')
-            ->select('INCREAMENT_BACKUP_NUMBER')
-            ->where('ID_UPT', $satkerId)
-            ->get()
-            ->getRow();
-
-        $currentNumber = $uptRow ? (int) $uptRow->INCREAMENT_BACKUP_NUMBER : 0;
-
-        if (!$isFull && !$isRetry && $currentNumber > 0) {
-            // Jika file yang dikirim nomornya sudah lebih kecil atau sama dengan yang ada di pusat
-            if ($lastNumber <= $currentNumber) {
-                throw new RuntimeException("File binlog #{$lastNumber} sudah pernah diproses sebelumnya (Nomor urut UPT saat ini #{$currentNumber}).");
-            }
-
-            // Peringatkan jika nomor urut melompat (gap)
-            if ($firstNumber > ($currentNumber + 1)) {
-                log_message('warning', "UPT {$satkerId}: Terjadi lompatan nomor binlog dari #{$currentNumber} langsung ke #{$firstNumber}.");
-            }
-        }
-
+        // Tidak ada pemblokiran nomor urut konsolidasi (eksekusi idempoten)
         return [
             'first' => $firstNumber,
             'last'  => $lastNumber,
@@ -159,7 +139,8 @@ class BinlogExecutorService
         string $format = 'bin-log',
         string $clientDb = 'db_sdp',
         string $timePoint = '',
-        ?callable $onProgress = null
+        ?callable $onProgress = null,
+        ?int $packageBackupNumber = null
     ): int {
         natsort($files);
         $files = array_values($files);
@@ -180,6 +161,9 @@ class BinlogExecutorService
 
         $isWindows = (DIRECTORY_SEPARATOR === '\\');
         $lastNumber = 0;
+
+        // Pastikan tabel tracking / jembatan di database replica UPT sudah ada
+        $this->ensureReplicaSchema($databaseUpt);
 
         foreach ($files as $index => $file) {
             $fileNum = $this->extractSequenceNumber($file);
@@ -229,6 +213,10 @@ class BinlogExecutorService
                     throw new RuntimeException("Gagal mengonversi file binlog {$file} ke SQL: exit code {$codeExtract}");
                 }
 
+                // Tahap 1.5: Ganti nama database literal di file SQL (misal: `db_sdp`.`upt` -> `db379`.`upt`)
+                // karena --rewrite-db hanya mengganti statement USE tapi tidak mengganti prefix tabel eksplisit
+                $this->rewriteDatabaseInSql($sqlFile, $clientDb, $databaseUpt);
+
                 // Tahap 2: Eksekusi SQL ke database replica
                 $mysqlCmd = sprintf(
                     '"%s" --local-infile %s --force %s < "%s" 2> "%s"',
@@ -241,7 +229,9 @@ class BinlogExecutorService
 
                 exec($mysqlCmd, $outExec, $codeExec);
             } else {
-                // Format SQL langsung
+                // Format SQL langsung: rewrite database jika ada
+                $this->rewriteDatabaseInSql($sourceFile, $clientDb, $databaseUpt);
+
                 $mysqlCmd = sprintf(
                     '"%s" --local-infile %s --force %s < "%s" 2> "%s"',
                     $mysqlBin,
@@ -259,8 +249,10 @@ class BinlogExecutorService
         }
 
         // Update INCREAMENT_BACKUP_NUMBER di database pusat (upt)
-        if ($lastNumber > 0) {
-            $updateData = ['INCREAMENT_BACKUP_NUMBER' => $lastNumber];
+        // Gunakan nomor paket konsolidasi (backup_number dari info.ini) agar selalu sinkron dengan counter UPT
+        $saveNumber = ($packageBackupNumber !== null && $packageBackupNumber > 0) ? $packageBackupNumber : $lastNumber;
+        if ($saveNumber > 0) {
+            $updateData = ['INCREAMENT_BACKUP_NUMBER' => $saveNumber];
             if (!empty($timePoint)) {
                 $updateData['INCREAMENT_BACKUP_TIME'] = $timePoint;
             } else {
@@ -273,6 +265,64 @@ class BinlogExecutorService
         }
 
         return $lastNumber;
+    }
+
+    /**
+     * Memastikan tabel-tabel pendukung modern (seperti log_konsolidasi_job)
+     * sudah terbuat di database replica satker tujuan (CREATE TABLE IF NOT EXISTS).
+     */
+    private function ensureReplicaSchema(string $databaseUpt): void
+    {
+        try {
+            $sql = "CREATE TABLE IF NOT EXISTS `{$databaseUpt}`.`log_konsolidasi_job` (
+                `ID_LOG` INT(11) NOT NULL,
+                `JOB_ID` VARCHAR(36) NOT NULL,
+                `LOG_NAME_NEXT` VARCHAR(50) DEFAULT NULL,
+                PRIMARY KEY (`ID_LOG`),
+                KEY `idx_job_id` (`JOB_ID`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=latin1";
+            $this->db->query($sql);
+        } catch (\Throwable $e) {
+            log_message('warning', "Gagal ensureReplicaSchema untuk {$databaseUpt}: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Mengganti prefix database literal pada file SQL (misal `db_sdp`. -> `db379`.)
+     * secara streaming dengan buffer hemat memori.
+     */
+    private function rewriteDatabaseInSql(string $sqlFile, string $fromDb, string $toDb): void
+    {
+        if ($fromDb === $toDb || !file_exists($sqlFile)) {
+            return;
+        }
+
+        $tempFile = $sqlFile . '.rw_tmp';
+        $in  = @fopen($sqlFile, 'rb');
+        $out = @fopen($tempFile, 'wb');
+        if (!$in || !$out) {
+            if ($in) fclose($in);
+            if ($out) fclose($out);
+            return;
+        }
+
+        $patterns = [
+            '`' . $fromDb . '`.' => '`' . $toDb . '`.',
+            $fromDb . '.'        => $toDb . '.',
+        ];
+
+        while (!feof($in)) {
+            $line = fgets($in, 1048576);
+            if ($line === false) break;
+            $line = str_replace(array_keys($patterns), array_values($patterns), $line);
+            fwrite($out, $line);
+        }
+
+        fclose($in);
+        fclose($out);
+
+        @unlink($sqlFile);
+        @rename($tempFile, $sqlFile);
     }
 
     /**
@@ -308,6 +358,16 @@ class BinlogExecutorService
 
             // Abaikan duplicate entry (error 1062) — idempoten / wajar saat konsolidasi retry
             if (preg_match('/ERROR 1062 \(23000\).*Duplicate entry/i', $line)) {
+                continue;
+            }
+
+            // Abaikan duplicate column name (error 1060) atau duplicate key name (error 1061) saat migrasi/alter idempoten
+            if (preg_match('/ERROR 106[01] \(42[S0][0-9]{2}\).*Duplicate (column|key) name/i', $line)) {
+                continue;
+            }
+
+            // Abaikan error pada tabel tracking antrean internal UPT (log_konsolidasi_job)
+            if (stripos($line, 'log_konsolidasi_job') !== false) {
                 continue;
             }
 

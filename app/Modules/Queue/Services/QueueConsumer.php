@@ -60,7 +60,9 @@ final class QueueConsumer
         } catch (\Throwable $e) {
             // 4b. Handle failure
             $attempts = $attempts + 1; // +1 because claim() increments it in DB, but $job contains old value
-            $this->repository->fail($jobId, $attempts, $maxAttempts, $e->getMessage() . "\n" . $e->getTraceAsString());
+            log_message('error', "Queue job {$jobId} failed: " . $e->getMessage() . "\n" . $e->getTraceAsString());
+            $cleanError = trim(strtok($e->getMessage(), "\n\r"));
+            $this->repository->fail($jobId, $attempts, $maxAttempts, $cleanError);
         }
 
         return true;

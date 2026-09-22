@@ -94,24 +94,38 @@ final class QueueRepository
     }
 
     /**
-     * Bulk status check for multiple job IDs.
+     * Bulk status check for multiple job IDs or by satkerId.
      * Returns job data + current processing info for queue position display.
      *
      * @param string[] $jobIds
+     * @param string|null $satkerId
      * @return array{jobs: array, current_processing: string|null}
      */
-    public function getStatusBulk(array $jobIds): array
+    public function getStatusBulk(array $jobIds, ?string $satkerId = null): array
     {
-        if (empty($jobIds)) {
+        if (empty($jobIds) && empty($satkerId)) {
             return ['jobs' => [], 'current_processing' => null];
         }
 
-        // Fetch requested jobs
-        $jobs = $this->db->table('job_queue')
-            ->select('ID, ID_UPT, STATUS, QUEUE_NUMBER, RESULT, CREATED_AT, COMPLETED_AT')
-            ->whereIn('ID', $jobIds)
-            ->get()
-            ->getResultArray();
+        $builder = $this->db->table('job_queue')
+            ->select('ID, ID_UPT, STATUS, QUEUE_NUMBER, RESULT, CREATED_AT, COMPLETED_AT');
+
+        if (!empty($jobIds) && !empty($satkerId)) {
+            $builder->groupStart()
+                ->whereIn('ID', $jobIds)
+                ->orGroupStart()
+                    ->where('ID_UPT', $satkerId)
+                    ->whereIn('STATUS', ['pending', 'processing'])
+                ->groupEnd()
+            ->groupEnd();
+        } elseif (!empty($jobIds)) {
+            $builder->whereIn('ID', $jobIds);
+        } elseif (!empty($satkerId)) {
+            $builder->where('ID_UPT', $satkerId)
+                ->whereIn('STATUS', ['pending', 'processing']);
+        }
+
+        $jobs = $builder->orderBy('CREATED_AT', 'ASC')->get()->getResultArray();
 
         // Auto-assign queue number for any job that is missing it
         foreach ($jobs as &$j) {
@@ -287,6 +301,9 @@ final class QueueRepository
         if (!empty($row['RESULT'])) {
             $decoded = json_decode($row['RESULT'], true);
             if (json_last_error() === JSON_ERROR_NONE) {
+                if (!empty($decoded['error'])) {
+                    $decoded['error'] = trim(strtok($decoded['error'], "\n\r"));
+                }
                 $row['progress'] = $decoded;
             }
             unset($row['RESULT']);

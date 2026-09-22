@@ -128,7 +128,9 @@ final class QueueController extends BaseController
             $input = null;
         }
 
-        $jobIds = $input['job_ids'] ?? $this->request->getPost('job_ids') ?? [];
+        $jobIds   = $input['job_ids'] ?? $this->request->getPost('job_ids') ?? [];
+        $satkerId = $input['satker_id'] ?? $this->request->getPost('satker_id') ?? $this->request->getGet('satker_id');
+
         if (is_string($jobIds)) {
             $decoded = json_decode($jobIds, true);
             if (is_array($decoded)) {
@@ -138,14 +140,18 @@ final class QueueController extends BaseController
             }
         }
 
-        if (!is_array($jobIds) || empty($jobIds)) {
-            return ApiResponse::fail("Parameter job_ids (array) diperlukan.", 400);
+        if ((!is_array($jobIds) || empty($jobIds)) && empty($satkerId)) {
+            return ApiResponse::fail("Parameter job_ids (array) atau satker_id diperlukan.", 400);
+        }
+
+        if (!is_array($jobIds)) {
+            $jobIds = [];
         }
 
         // Cap at 50 to prevent abuse
         $jobIds = array_slice($jobIds, 0, 50);
 
-        $result = $this->service()->bulkStatus($jobIds);
+        $result = $this->service()->bulkStatus($jobIds, !empty($satkerId) ? (string) $satkerId : null);
 
         return ApiResponse::ok($result);
     }

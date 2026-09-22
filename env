@@ -75,3 +75,16 @@
 #--------------------------------------------------------------------
 
 # logger.threshold = 4
+
+#--------------------------------------------------------------------
+# TOOLS & EXTERNAL BINARIES
+#--------------------------------------------------------------------
+
+# Path ke direktori bin MySQL/MariaDB (tempat mysqlbinlog.exe dan mysql.exe berada)
+# MYSQL_BIN_PATH = 'C:/laragon/bin/mysql/mysql-8.0.30-winx64/bin'
+
+# Path ke executable 7za (7-Zip standalone) untuk kompresi paket konsolidasi
+# SDP_7ZA_PATH = 'C:/Program Files/7-Zip/7za.exe'
+
+# Direktori upload FTP sementara untuk paket konsolidasi
+# FTP_UPLOAD_PATH = ''

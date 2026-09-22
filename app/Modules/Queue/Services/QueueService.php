@@ -53,11 +53,12 @@ final class QueueService
      * Bulk status check: returns formatted job statuses + current processing info.
      *
      * @param string[] $jobIds
+     * @param string|null $satkerId
      * @return array{jobs: array, current_processing: string|null, current_processing_display: string|null}
      */
-    public function bulkStatus(array $jobIds): array
+    public function bulkStatus(array $jobIds, ?string $satkerId = null): array
     {
-        $result = $this->repository->getStatusBulk($jobIds);
+        $result = $this->repository->getStatusBulk($jobIds, $satkerId);
 
         // Format each job's queue number for display
         foreach ($result['jobs'] as &$job) {
@@ -66,6 +67,10 @@ final class QueueService
             if (!empty($job['RESULT'])) {
                 $decoded = json_decode($job['RESULT'], true);
                 if (json_last_error() === JSON_ERROR_NONE) {
+                    if (!empty($decoded['error'])) {
+                        // Utamakan pesan error intinya saja, buang stack trace
+                        $decoded['error'] = trim(strtok($decoded['error'], "\n\r"));
+                    }
                     $job['progress'] = $decoded;
                 }
                 unset($job['RESULT']);
