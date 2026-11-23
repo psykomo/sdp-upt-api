@@ -8,14 +8,25 @@ use CodeIgniter\Test\CIUnitTestCase;
  */
 final class TenantContextTest extends CIUnitTestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->clearTenancyEnv();
+    }
+
     protected function tearDown(): void
+    {
+        $this->clearTenancyEnv();
+
+        parent::tearDown();
+    }
+
+    private function clearTenancyEnv(): void
     {
         putenv('tenancy.mode');
         putenv('tenancy.databasePrefix');
         unset($_ENV['tenancy.mode'], $_SERVER['tenancy.mode']);
         unset($_ENV['tenancy.databasePrefix'], $_SERVER['tenancy.databasePrefix']);
-
-        parent::tearDown();
     }
 
     public function testDefaultModeIsSingle(): void

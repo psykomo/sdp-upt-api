@@ -2,7 +2,9 @@
 
 namespace App\Modules\Auth\Services;
 
+use App\Modules\Auth\Support\PortedMenuRegistry;
 use App\Modules\Shared\Auth\CurrentUser;
+use App\Modules\Shared\Support\PublicOrigins;
 use App\Modules\Shared\Tenancy\TenantContext;
 
 final class AuthService
@@ -64,6 +66,27 @@ final class AuthService
             'token' => $token,
             'user'  => $this->publicUser($user, $row),
         ];
+    }
+
+    /**
+     * Exchanges a short-lived handover JWT (or existing session JWT) for a fresh session JWT.
+     */
+    public function exchangeHandoverToken(string $token): string
+    {
+        $claims = $this->jwt->decode($token);
+        $typ    = (string) ($claims['typ'] ?? JwtService::TYP_SESSION);
+        if (! in_array($typ, [JwtService::TYP_HANDOVER, JwtService::TYP_SESSION], true)) {
+            throw new \RuntimeException('Token tidak valid.', 401);
+        }
+
+        $user = $this->userFromClaims($claims);
+        if ($user->id === '') {
+            throw new \RuntimeException('Token tidak valid.', 401);
+        }
+
+        unset($claims['typ'], $claims['iat'], $claims['nbf'], $claims['exp'], $claims['iss']);
+
+        return $this->jwt->encode($claims);
     }
 
     /**
@@ -176,9 +199,35 @@ final class AuthService
      */
     public function issueHapusGrant(CurrentUser $officer, string $username, string $password, string $nomorInduk): array
     {
-        $username   = trim($username);
-        $nomorInduk = trim($nomorInduk);
-        if ($username === '' || $password === '' || $nomorInduk === '') {
+        return $this->issueSupervisorGrant(
+            $officer,
+            $username,
+            $password,
+            RbacService::MENU_IDENTITAS,
+            $nomorInduk,
+            'delete',
+        );
+    }
+
+    /**
+     * Port of Login::logindp for any dual-password protected action.
+     *
+     * @return array{grant: string, supervisor: array<string, mixed>}
+     */
+    public function issueSupervisorGrant(
+        CurrentUser $officer,
+        string $username,
+        string $password,
+        string $menuId,
+        string $resourceKey,
+        string $action = 'delete',
+    ): array {
+        $username    = trim($username);
+        $menuId      = trim($menuId);
+        $resourceKey = trim($resourceKey);
+        $action      = trim($action) ?: 'delete';
+
+        if ($username === '' || $password === '' || $menuId === '' || $resourceKey === '') {
             throw new \RuntimeException('Masukkan username & password.', 422);
         }
 
@@ -206,17 +255,20 @@ final class AuthService
             throw new \RuntimeException('Anda BUKAN Supervisor.', 403);
         }
 
-        if ($this->rbac->levelForActor((string) $row['ID_USER'], RbacService::MENU_IDENTITAS) !== 'W') {
+        if ($this->rbac->levelForActor((string) $row['ID_USER'], $menuId) !== 'W') {
             throw new \RuntimeException('Mohon maaf anda tidak berhak mengakses halaman ini.', 403);
         }
 
         $supervisor = $this->site->hydrateUser($row);
         $grant      = $this->jwt->encodeWithTtl([
-            'sub'        => $supervisor->id,
-            'typ'        => 'hapus-supervisor',
-            'officer'    => $officer->id,
-            'nomorInduk' => $nomorInduk,
-            'name'       => $supervisor->name,
+            'sub'         => $supervisor->id,
+            'typ'         => JwtService::TYP_SUPERVISOR,
+            'officer'     => $officer->id,
+            'menuId'      => $menuId,
+            'action'      => $action,
+            'resourceKey' => $resourceKey,
+            'nomorInduk'  => $resourceKey,
+            'name'        => $supervisor->name,
         ], 10 * 60);
 
         return [
@@ -230,6 +282,25 @@ final class AuthService
      */
     public function readHapusGrant(CurrentUser $officer, string $nomorInduk, string $grant): array
     {
+        return $this->readSupervisorGrant(
+            $officer,
+            RbacService::MENU_IDENTITAS,
+            $nomorInduk,
+            $grant,
+            'delete',
+        );
+    }
+
+    /**
+     * @return array{supervisorId: string, supervisorName: string}
+     */
+    public function readSupervisorGrant(
+        CurrentUser $officer,
+        string $menuId,
+        string $resourceKey,
+        string $grant,
+        string $action = 'delete',
+    ): array {
         $grant = trim($grant);
         if ($grant === '') {
             throw new \RuntimeException('Halaman ini memerlukan autentikasi dari supervisor.', 403);
@@ -241,17 +312,30 @@ final class AuthService
             throw new \RuntimeException('Halaman ini memerlukan autentikasi dari supervisor.', 403, $e);
         }
 
-        if (($claims['typ'] ?? '') !== 'hapus-supervisor'
-            || (string) ($claims['officer'] ?? '') !== $officer->id
-            || (string) ($claims['nomorInduk'] ?? '') !== $nomorInduk
-            || (string) ($claims['sub'] ?? '') === ''
-        ) {
+        $typ = (string) ($claims['typ'] ?? '');
+        $sub = (string) ($claims['sub'] ?? '');
+
+        if ($sub === '' || (string) ($claims['officer'] ?? '') !== $officer->id) {
+            throw new \RuntimeException('Halaman ini memerlukan autentikasi dari supervisor.', 403);
+        }
+
+        $matchesNew = $typ === JwtService::TYP_SUPERVISOR
+            && (string) ($claims['menuId'] ?? '') === $menuId
+            && (string) ($claims['action'] ?? '') === $action
+            && (string) ($claims['resourceKey'] ?? '') === $resourceKey;
+
+        $matchesLegacyHapus = $typ === JwtService::TYP_HAPUS_LEGACY
+            && $menuId === RbacService::MENU_IDENTITAS
+            && $action === 'delete'
+            && (string) ($claims['nomorInduk'] ?? '') === $resourceKey;
+
+        if (! $matchesNew && ! $matchesLegacyHapus) {
             throw new \RuntimeException('Halaman ini memerlukan autentikasi dari supervisor.', 403);
         }
 
         return [
-            'supervisorId'   => (string) $claims['sub'],
-            'supervisorName' => (string) ($claims['name'] ?? $claims['sub']),
+            'supervisorId'   => $sub,
+            'supervisorName' => (string) ($claims['name'] ?? $sub),
         ];
     }
 
@@ -268,11 +352,28 @@ final class AuthService
      */
     public function me(CurrentUser $user): array
     {
+        $registry = PortedMenuRegistry::all();
+        $access   = $this->rbac->accessMapFor($user, $registry);
+        $menus    = [];
+
+        foreach ($registry as $item) {
+            $level = $access[$item['id']]['level'] ?? 'N';
+            if ($level !== 'N') {
+                $menus[] = [
+                    'id'    => $item['id'],
+                    'key'   => $item['key'],
+                    'label' => $item['label'],
+                    'path'  => $item['path'],
+                    'icon'  => $item['icon'],
+                ];
+            }
+        }
+
         return [
-            'user'   => $this->publicUser($user),
-            'access' => [
-                RbacService::MENU_IDENTITAS => $this->rbac->accessFor($user, RbacService::MENU_IDENTITAS),
-            ],
+            'user'          => $this->publicUser($user),
+            'hasLegacyHost' => PublicOrigins::hasLegacyBase(),
+            'access'        => $access,
+            'menus'         => $menus,
         ];
     }
 

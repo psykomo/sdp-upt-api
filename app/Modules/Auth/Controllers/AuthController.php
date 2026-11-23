@@ -4,10 +4,11 @@ namespace App\Modules\Auth\Controllers;
 
 use App\Controllers\BaseController;
 use App\Modules\Auth\Services\AuthService;
-use App\Modules\Auth\Services\JwtService;
+use App\Modules\Auth\Services\RbacService;
 use App\Modules\Auth\Services\SiteContextService;
 use App\Modules\Shared\Auth\AuthContext;
 use App\Modules\Shared\Http\ApiResponse;
+use App\Modules\Shared\Support\PublicOrigins;
 use App\Modules\Shared\Tenancy\TenantContext;
 use CodeIgniter\HTTP\ResponseInterface;
 
@@ -50,6 +51,8 @@ final class AuthController extends BaseController
             'tenancyMode'          => $mode,
             'requiresTenantId'     => $requiresTenantId,
             'requiresWorkingUptId' => $requiresWorkingUptId,
+            'hasLegacyHost'        => PublicOrigins::hasLegacyBase(),
+            'legacyBase'           => PublicOrigins::legacyBase(),
         ]);
     }
 
@@ -62,16 +65,12 @@ final class AuthController extends BaseController
         }
 
         try {
-            $claims = (new JwtService())->decode($token);
-            $user   = $this->service()->userFromClaims($claims);
-            if ($user->id === '') {
-                return ApiResponse::fail('Token tidak valid.', 401);
-            }
+            $sessionToken = $this->service()->exchangeHandoverToken($token);
         } catch (\Throwable $e) {
             return ApiResponse::fail('Token tidak valid.', 401);
         }
 
-        return $this->withTokenCookie(ApiResponse::ok(['ok' => true]), $token);
+        return $this->withTokenCookie(ApiResponse::ok(['ok' => true]), $sessionToken);
     }
 
     public function logout()
@@ -109,16 +108,20 @@ final class AuthController extends BaseController
     public function supervisor()
     {
         $json = $this->request->getJSON(true) ?? [];
-        $username   = (string) ($json['username'] ?? $this->request->getPost('username') ?? '');
-        $password   = (string) ($json['password'] ?? $this->request->getPost('password') ?? '');
-        $nomorInduk = (string) ($json['nomorInduk'] ?? $this->request->getPost('nomorInduk') ?? '');
+        $username    = (string) ($json['username'] ?? $this->request->getPost('username') ?? '');
+        $password    = (string) ($json['password'] ?? $this->request->getPost('password') ?? '');
+        $menuId      = (string) ($json['menuId'] ?? $this->request->getPost('menuId') ?? RbacService::MENU_IDENTITAS);
+        $resourceKey = (string) ($json['resourceKey'] ?? $json['nomorInduk'] ?? $this->request->getPost('resourceKey') ?? $this->request->getPost('nomorInduk') ?? '');
+        $action      = (string) ($json['action'] ?? $this->request->getPost('action') ?? 'delete');
 
         try {
-            $result = $this->service()->issueHapusGrant(
+            $result = $this->service()->issueSupervisorGrant(
                 AuthContext::user(),
                 $username,
                 $password,
-                $nomorInduk,
+                $menuId,
+                $resourceKey,
+                $action,
             );
         } catch (\RuntimeException $e) {
             $code = $e->getCode();

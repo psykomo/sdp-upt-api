@@ -8,11 +8,19 @@ use UnexpectedValueException;
 
 final class JwtService
 {
+    public const TYP_SESSION      = 'session';
+    public const TYP_HANDOVER     = 'handover';
+    public const TYP_SUPERVISOR   = 'supervisor-grant';
+    public const TYP_HAPUS_LEGACY = 'hapus-supervisor';
+
     public function encode(array $claims): string
     {
         $ttlHours = (int) env('jwt.ttlHours', 8);
 
-        return $this->encodeWithTtl($claims, $ttlHours * 3600);
+        return $this->encodeWithTtl(
+            array_merge(['typ' => self::TYP_SESSION], $claims),
+            $ttlHours * 3600,
+        );
     }
 
     public function encodeWithTtl(array $claims, int $ttlSeconds): string

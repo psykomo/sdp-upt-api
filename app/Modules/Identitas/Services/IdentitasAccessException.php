@@ -2,16 +2,18 @@
 
 namespace App\Modules\Identitas\Services;
 
-final class IdentitasAccessException extends \RuntimeException
+use App\Modules\Shared\Access\AccessDeniedException;
+
+final class IdentitasAccessException extends AccessDeniedException
 {
     /**
      * @param array<string, string> $errors
      */
     public function __construct(
         string $message,
-        public readonly array $errors = [],
-        public readonly int $status = 403,
+        array $errors = [],
+        int $status = 403,
     ) {
-        parent::__construct($message);
+        parent::__construct($message, $errors, $status);
     }
 }

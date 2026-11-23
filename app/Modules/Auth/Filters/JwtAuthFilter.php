@@ -26,6 +26,11 @@ final class JwtAuthFilter implements FilterInterface
 
         try {
             $claims = (new JwtService())->decode($token);
+            $typ    = (string) ($claims['typ'] ?? JwtService::TYP_SESSION);
+            if ($typ !== JwtService::TYP_SESSION) {
+                return ApiResponse::fail('Token tidak valid.', 401);
+            }
+
             $auth   = new AuthService();
             $user = $auth->userFromClaims($claims);
             if ($user->id === '') {

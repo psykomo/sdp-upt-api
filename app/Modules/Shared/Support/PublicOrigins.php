@@ -15,8 +15,17 @@ final class PublicOrigins
         return rtrim((string) env('app.baseURL', 'http://127.0.0.1:8081'), '/');
     }
 
+    public static function hasLegacyBase(): bool
+    {
+        return trim((string) env('legacy.baseURL', 'http://127.0.0.1:8080')) !== '';
+    }
+
     public static function legacyBase(): string
     {
+        if (! self::hasLegacyBase()) {
+            return '';
+        }
+
         $host = self::requestHost();
         if (self::isPublicHost($host)) {
             return 'https://' . self::publicLegacyHost();
