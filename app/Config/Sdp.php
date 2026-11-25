@@ -14,7 +14,7 @@ class Sdp extends BaseConfig
 
     public int $jwtTtlHours = 8;
 
-    public string $legacyBaseURL = 'http://127.0.0.1:8080';
+    public string $legacyBaseURL = 'http://127.0.0.1';
 
     /**
      * Path to the legacy PHP tree that owns upload/.
