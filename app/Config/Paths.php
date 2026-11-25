@@ -87,4 +87,6 @@ class Paths
      * value - the directory should not be publicly accessible.
      */
     public string $envDirectory = __DIR__ . '/../../';
+    // For locked IonCube UPT builds, replace the line above with:
+    // public string $envDirectory = __DIR__ . '/__disabled__';
 }

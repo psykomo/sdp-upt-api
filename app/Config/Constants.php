@@ -16,6 +16,15 @@
 defined('APP_NAMESPACE') || define('APP_NAMESPACE', 'App');
 
 /*
+ | --------------------------------------------------------------------
+ | Lock Environment for IonCube UPT Release Builds
+ | --------------------------------------------------------------------
+ | Uncomment before IonCube encoding to pin ENVIRONMENT to 'production'
+ | before DotEnv runs (blocks CI_ENVIRONMENT=development in a dropped .env).
+ */
+// defined('ENVIRONMENT') || define('ENVIRONMENT', 'production');
+
+/*
  | --------------------------------------------------------------------------
  | Composer Path
  | --------------------------------------------------------------------------

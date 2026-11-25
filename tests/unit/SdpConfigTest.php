@@ -1,5 +1,6 @@
 <?php
 
+use CodeIgniter\Config\BaseConfig;
 use CodeIgniter\Test\CIUnitTestCase;
 use Config\Sdp;
 
@@ -69,6 +70,7 @@ final class SdpConfigTest extends CIUnitTestCase
 
     protected function tearDown(): void
     {
+        BaseConfig::$override   = true;
         Sdp::$localOverrideFile = null;
 
         if ($this->tempOverrideFile !== null && is_file($this->tempOverrideFile)) {
@@ -163,6 +165,33 @@ final class SdpConfigTest extends CIUnitTestCase
         $this->assertSame('canonical-secret', $cfg->jwtSecret);
         $this->assertSame(12, $cfg->jwtTtlHours);
         $this->assertSame('shared_database', $cfg->tenancyMode);
+    }
+
+    public function testLockedOverrideIgnoresEnvAndLegacyAliases(): void
+    {
+        $this->tempOverrideFile = tempnam(sys_get_temp_dir(), 'sdp_local_');
+        file_put_contents(
+            $this->tempOverrideFile,
+            "<?php\nreturn ['legacyRoot' => '/from/local-file'];\n"
+        );
+        Sdp::$localOverrideFile = $this->tempOverrideFile;
+
+        $this->setEnv('jwt.secret', 'tampered-secret');
+        $this->setEnv('sdp.jwtSecret', 'tampered-canonical');
+        $this->setEnv('tenancy.mode', 'shared_database');
+        $this->setEnv('legacy.baseURL', 'http://evil.example:9999');
+
+        BaseConfig::$override = false;
+        try {
+            $cfg = new Sdp();
+        } finally {
+            BaseConfig::$override = true;
+        }
+
+        $this->assertSame('/from/local-file', $cfg->legacyRoot);
+        $this->assertSame('', $cfg->jwtSecret);
+        $this->assertSame('single', $cfg->tenancyMode);
+        $this->assertSame('http://127.0.0.1:8080', $cfg->legacyBaseURL);
     }
 
     private function setEnv(string $key, string $value): void

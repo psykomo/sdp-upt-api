@@ -23,3 +23,12 @@ ini_set('display_errors', '0');
  | release of the framework.
  */
 defined('CI_DEBUG') || define('CI_DEBUG', false);
+
+/*
+ |--------------------------------------------------------------------------
+ | LOCK CONFIG OVERRIDES IN PRODUCTION
+ |--------------------------------------------------------------------------
+ | Prevent .env or OS environment variables from overriding baked PHP config.
+ */
+require_once SYSTEMPATH . 'Config/BaseConfig.php';
+\CodeIgniter\Config\BaseConfig::$override = false;

@@ -40,6 +40,10 @@ class Sdp extends BaseConfig
     {
         $this->loadLocalOverride();
 
+        if (! static::$override) {
+            return;
+        }
+
         parent::__construct();
 
         $this->applyLegacyAliases();
