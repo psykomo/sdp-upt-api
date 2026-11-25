@@ -2,6 +2,7 @@
 
 namespace App\Modules\Auth\Services;
 
+use Config\Sdp;
 use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
 use UnexpectedValueException;
@@ -15,7 +16,7 @@ final class JwtService
 
     public function encode(array $claims): string
     {
-        $ttlHours = (int) env('jwt.ttlHours', 8);
+        $ttlHours = max(1, Sdp::current()->jwtTtlHours);
 
         return $this->encodeWithTtl(
             array_merge(['typ' => self::TYP_SESSION], $claims),
@@ -52,7 +53,7 @@ final class JwtService
 
     private function secret(): string
     {
-        $secret = (string) env('jwt.secret', '');
+        $secret = Sdp::current()->jwtSecret;
         if ($secret === '') {
             throw new \RuntimeException('jwt.secret is not configured.');
         }

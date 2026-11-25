@@ -16,7 +16,7 @@ class App extends BaseConfig
      *
      * E.g., http://example.com/
      */
-    public string $baseURL = 'http://localhost:8080/';
+    public string $baseURL = 'http://127.0.0.1:8081/';
 
     /**
      * Allowed Hostnames in the Site URL other than the hostname in the baseURL.
@@ -196,7 +196,7 @@ class App extends BaseConfig
         $raw  = $_SERVER['HTTP_X_FORWARDED_HOST'] ?? $_SERVER['HTTP_HOST'] ?? '';
         $host = strtolower(trim(explode(',', (string) $raw)[0]));
         $host = preg_replace('/:\d+$/', '', $host) ?? $host;
-        $publicApi = strtolower((string) env('public.apiHost', 'sdp-api.caripasal.com'));
+        $publicApi = strtolower(Sdp::current()->publicApiHost);
 
         if ($host === $publicApi) {
             $this->baseURL = 'https://' . $publicApi . '/';

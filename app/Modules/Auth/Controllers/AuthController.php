@@ -11,6 +11,7 @@ use App\Modules\Shared\Http\ApiResponse;
 use App\Modules\Shared\Support\PublicOrigins;
 use App\Modules\Shared\Tenancy\TenantContext;
 use CodeIgniter\HTTP\ResponseInterface;
+use Config\Sdp;
 
 final class AuthController extends BaseController
 {
@@ -135,7 +136,7 @@ final class AuthController extends BaseController
 
     private function withTokenCookie(ResponseInterface $response, string $token): ResponseInterface
     {
-        $ttl = max(1, (int) env('jwt.ttlHours', 8) * 3600);
+        $ttl = max(1, Sdp::current()->jwtTtlHours * 3600);
 
         return $response->setCookie([
             'name'     => 'sdp_token',

@@ -2,6 +2,8 @@
 
 namespace App\Modules\Shared\Tenancy;
 
+use Config\Sdp;
+
 /**
  * Resolves which database a request should use.
  *
@@ -22,7 +24,7 @@ final class TenantContext
 
     public function mode(): string
     {
-        $mode = (string) env('tenancy.mode', self::MODE_SINGLE);
+        $mode = Sdp::current()->tenancyMode;
 
         return in_array($mode, [
             self::MODE_SINGLE,
@@ -38,7 +40,7 @@ final class TenantContext
 
     public function prefix(): string
     {
-        $prefix = (string) env('tenancy.databasePrefix', self::DEFAULT_PREFIX);
+        $prefix = Sdp::current()->tenancyDatabasePrefix;
 
         return $prefix === '' ? self::DEFAULT_PREFIX : $prefix;
     }

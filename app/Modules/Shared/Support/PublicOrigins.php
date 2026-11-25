@@ -2,6 +2,9 @@
 
 namespace App\Modules\Shared\Support;
 
+use Config\App;
+use Config\Sdp;
+
 final class PublicOrigins
 {
     public static function apiBase(): string
@@ -12,12 +15,14 @@ final class PublicOrigins
         }
 
         // API is never advertised on the LAN. Officers use same-origin /api.
-        return rtrim((string) env('app.baseURL', 'http://127.0.0.1:8081'), '/');
+        $base = rtrim(trim(config(App::class)->baseURL), '/');
+
+        return $base !== '' ? $base : 'http://127.0.0.1:8081';
     }
 
     public static function hasLegacyBase(): bool
     {
-        return trim((string) env('legacy.baseURL', 'http://127.0.0.1:8080')) !== '';
+        return trim(Sdp::current()->legacyBaseURL) !== '';
     }
 
     public static function legacyBase(): string
@@ -32,7 +37,7 @@ final class PublicOrigins
         }
 
         return self::rewriteOfficerHost(
-            rtrim((string) env('legacy.baseURL', 'http://127.0.0.1:8080'), '/'),
+            rtrim(Sdp::current()->legacyBaseURL, '/'),
             $host,
         );
     }
@@ -45,7 +50,7 @@ final class PublicOrigins
         }
 
         return self::rewriteOfficerHost(
-            rtrim((string) env('frontend.origin', 'http://127.0.0.1:8082'), '/'),
+            rtrim(Sdp::current()->frontendOrigin, '/'),
             $host,
         );
     }
@@ -103,16 +108,16 @@ final class PublicOrigins
 
     private static function publicLegacyHost(): string
     {
-        return strtolower((string) env('public.legacyHost', 'sdp.caripasal.com'));
+        return strtolower(Sdp::current()->publicLegacyHost);
     }
 
     private static function publicApiHost(): string
     {
-        return strtolower((string) env('public.apiHost', 'sdp-api.caripasal.com'));
+        return strtolower(Sdp::current()->publicApiHost);
     }
 
     private static function publicFrontendHost(): string
     {
-        return strtolower((string) env('public.frontendHost', 'sdp-front.caripasal.com'));
+        return strtolower(Sdp::current()->publicFrontendHost);
     }
 }

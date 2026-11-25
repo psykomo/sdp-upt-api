@@ -372,6 +372,7 @@ final class AuthService
         return [
             'user'          => $this->publicUser($user),
             'hasLegacyHost' => PublicOrigins::hasLegacyBase(),
+            'legacyBase'    => PublicOrigins::legacyBase(),
             'access'        => $access,
             'menus'         => $menus,
         ];

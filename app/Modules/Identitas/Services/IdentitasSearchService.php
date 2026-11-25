@@ -83,8 +83,9 @@ final class IdentitasSearchService
                 'sort'               => $query->sort,
                 'order'              => $query->order,
             ],
-            'access' => $access,
-            'links'  => [
+            'access'     => $access,
+            'legacyBase' => $legacy,
+            'links'      => [
                 'tambah' => $frontend . '/identitas/baru',
             ],
             'columns' => $user->isHq()
